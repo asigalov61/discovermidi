@@ -1,3 +1,4 @@
 include discovermidi/README.md
 recursive-include discovermidi/ *
+recursive-include discovermidi/midi_loops_extractor *
 recursive-include discovermidi/artwork *
