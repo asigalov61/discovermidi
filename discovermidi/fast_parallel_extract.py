@@ -59,8 +59,8 @@ import time
 
 ###################################################################################
 
-def fast_parallel_extract(archive_path='./Godzilla-MIDI-Dataset/Godzilla-MIDI-Dataset-CC-BY-NC-SA.tar.gz', 
-                          output_dir='./Godzilla-MIDI-Dataset/', 
+def fast_parallel_extract(archive_path='./Discover-MIDI-Dataset/Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz', 
+                          output_dir='./Discover-MIDI-Dataset/', 
                           pigz_procs=256
                          ):
     
