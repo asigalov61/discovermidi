@@ -4,7 +4,7 @@ r'''############################################################################
 ###################################################################################
 #
 #
-#	Godzilla Search and Filter Python Module
+#	Discover Search and Filter Python Module
 #	Version 2.0
 #
 #   NOTE: Module code starts after the partial MIDI.py module @ line 1122
@@ -53,7 +53,8 @@ r'''############################################################################
 #
 #   Critical dependencies
 #
-#   !pip install cupy-cuda12x
+#   !pip install torch
+#   !pip install midirenderer
 #   !pip install numpy==1.24.4
 #
 #   !pip install huggingface_hub
@@ -66,19 +67,15 @@ r'''############################################################################
 #
 #   Basic use example
 #
-#   import godzilla_search_and_filter
+#   import search_and_filter
 #
-#   godzilla_search_and_filter.donwload_dataset()
+#   search_and_filter.download_dataset()
 #
-#   godzilla_search_and_filter.parallel_extract()
+#   search_and_filter.parallel_extract()
 #
-#   sigs_data = godzilla_search_and_filter.read_jsonl()
+#   features_matrixes, features_matrixes_file_names = search_and_filter.load_features_matrixes()
 #
-#   sigs_dicts = godzilla_search_and_filter.load_signatures(sigs_data)
-#
-#   X, global_union = godzilla_search_and_filter.precompute_signatures(sigs_dicts)
-#
-#   godzilla_search_and_filter.search_and_filter(sigs_dicts, X, global_union)
+#   search_and_filter.search_and_filter(features_matrixes, features_matrixes_file_names)
 #
 ###################################################################################
 '''
@@ -87,9 +84,8 @@ r'''############################################################################
 ###################################################################################
 
 print('=' * 70)
-print('Loading Godzilla Search and Filter Python module...')
+print('Loading Discover Search and Filter Python module...')
 print('Please wait...')
-print('=' * 70)
 
 ###################################################################################
 ###################################################################################
@@ -98,40 +94,25 @@ import os, sys, struct, copy
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
-import datetime
-
-from datetime import datetime
-
-import secrets
-
 import random
 
 import json
 
-import tqdm
+import pickle
 
-import multiprocessing
-
-from collections import Counter
+from collections import Counter, OrderedDict, defaultdict
 
 from itertools import combinations
 
-import statistics
 import math
 
-from collections import defaultdict
+import torch
 
-try:
-    import cupy as cp
-    import numpy as np
-    print('CuPy is found!')
-    print('Will use CuPy and GPU for processing!')
+import numpy as np
 
-except:
-    import numpy as cp
-    import numpy as np
-    print('Could not load CuPy!')
-    print('Will use NumPy and CPU for processing!')
+import midirenderer
+
+from pathlib import Path
     
 import shutil
 
@@ -140,7 +121,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from huggingface_hub import hf_hub_download
 
-print('=' * 70)
+from typing import Tuple, Optional, Iterable, Union
+
+import tqdm
 
 ###################################################################################
 ###################################################################################
@@ -1123,7 +1106,7 @@ The options:
 
 ###################################################################################
 ###################################################################################
-# This is the beginning of the Godzilla Search and Filter Python Module
+# This is the beginning of the Discover Search and Filter Python Module
 ###################################################################################
 ###################################################################################
 
@@ -1184,28 +1167,6 @@ ALL_CHORDS_SORTED = [[0], [0, 2], [0, 3], [0, 4], [0, 2, 4], [0, 5], [0, 2, 5], 
                     [7, 9, 11], [8], [8, 10], [8, 11], [9], [9, 11], [10], [11]]
 
 ###################################################################################
-
-ALL_CHORDS_FULL = [[0], [0, 3], [0, 3, 5], [0, 3, 5, 8], [0, 3, 5, 9], [0, 3, 5, 10], [0, 3, 6],
-                  [0, 3, 6, 9], [0, 3, 6, 10], [0, 3, 7], [0, 3, 7, 10], [0, 3, 8], [0, 3, 9],
-                  [0, 3, 10], [0, 4], [0, 4, 6], [0, 4, 6, 9], [0, 4, 6, 10], [0, 4, 7],
-                  [0, 4, 7, 10], [0, 4, 8], [0, 4, 9], [0, 4, 10], [0, 5], [0, 5, 8], [0, 5, 9],
-                  [0, 5, 10], [0, 6], [0, 6, 9], [0, 6, 10], [0, 7], [0, 7, 10], [0, 8], [0, 9],
-                  [0, 10], [1], [1, 4], [1, 4, 6], [1, 4, 6, 9], [1, 4, 6, 10], [1, 4, 6, 11],
-                  [1, 4, 7], [1, 4, 7, 10], [1, 4, 7, 11], [1, 4, 8], [1, 4, 8, 11], [1, 4, 9],
-                  [1, 4, 10], [1, 4, 11], [1, 5], [1, 5, 8], [1, 5, 8, 11], [1, 5, 9],
-                  [1, 5, 10], [1, 5, 11], [1, 6], [1, 6, 9], [1, 6, 10], [1, 6, 11], [1, 7],
-                  [1, 7, 10], [1, 7, 11], [1, 8], [1, 8, 11], [1, 9], [1, 10], [1, 11], [2],
-                  [2, 5], [2, 5, 8], [2, 5, 8, 11], [2, 5, 9], [2, 5, 10], [2, 5, 11], [2, 6],
-                  [2, 6, 9], [2, 6, 10], [2, 6, 11], [2, 7], [2, 7, 10], [2, 7, 11], [2, 8],
-                  [2, 8, 11], [2, 9], [2, 10], [2, 11], [3], [3, 5], [3, 5, 8], [3, 5, 8, 11],
-                  [3, 5, 9], [3, 5, 10], [3, 5, 11], [3, 6], [3, 6, 9], [3, 6, 10], [3, 6, 11],
-                  [3, 7], [3, 7, 10], [3, 7, 11], [3, 8], [3, 8, 11], [3, 9], [3, 10], [3, 11],
-                  [4], [4, 6], [4, 6, 9], [4, 6, 10], [4, 6, 11], [4, 7], [4, 7, 10], [4, 7, 11],
-                  [4, 8], [4, 8, 11], [4, 9], [4, 10], [4, 11], [5], [5, 8], [5, 8, 11], [5, 9],
-                  [5, 10], [5, 11], [6], [6, 9], [6, 10], [6, 11], [7], [7, 10], [7, 11], [8],
-                  [8, 11], [9], [10], [11]]
-
-###################################################################################
 ###################################################################################
 
 def create_files_list(datasets_paths=['./'],
@@ -1261,18 +1222,12 @@ def create_files_list(datasets_paths=['./'],
 
 ###################################################################################
 
-def check_and_fix_tones_chord(tones_chord, use_full_chords=True):
+def check_and_fix_tones_chord(tones_chord):
 
   tones_chord_combs = [list(comb) for i in range(len(tones_chord), 0, -1) for comb in combinations(tones_chord, i)]
 
-  if use_full_chords:
-    CHORDS = ALL_CHORDS_FULL
-
-  else:
-    CHORDS = ALL_CHORDS_SORTED
-
   for c in tones_chord_combs:
-    if c in CHORDS:
+    if c in ALL_CHORDS_SORTED:
       checked_tones_chord = c
       break
 
@@ -1824,490 +1779,795 @@ def advanced_score_processor(raw_score,
 
 ###################################################################################
 
-def load_signatures(signatures_data, 
-                    use_full_signatures=True, 
-                    convert_counts_to_ratios=True,
-                    omit_melodies=True,
-                    omit_drums=True,
-                    verbose=True
-                   ):
-
-    if use_full_signatures:
-        smax = 128+len(ALL_CHORDS_SORTED)
-        stype = 'full_sig'
-
-    else:
-        smax = 128+len(ALL_CHORDS_FULL)
-        stype = 'basic_sig'
-
-    sigs_dicts = []
+def remove_duplicate_pitches_from_escore_notes(escore_notes, 
+                                               pitches_idx=4, 
+                                               patches_idx=6, 
+                                               return_dupes_count=False
+                                              ):
     
-    for sig in tqdm.tqdm(signatures_data, disable=not verbose):
+    cscore = chordify_score([1000, escore_notes])
 
-        sig = [sig['md5'], sig[stype]]
+    new_escore = []
 
-        if omit_drums:
-            sig = [sig[0], [s for s in sig[1] if -1 < s[0] < smax]]
+    bp_count = 0
 
-        if convert_counts_to_ratios:
-            tcount = sum([s[1] for s in sig[1] if s[0] > -1])
-            sig = [sig[0], [[s[0], s[1] / tcount] for s in sig[1] if s[0] > -1]]
+    for c in cscore:
+        
+        cho = []
+        seen = []
 
-        if omit_melodies:
-            if all([s[0] < 128 for s in sig[1]]):
-                sig[1] = []
+        for cc in c:
+            if [cc[pitches_idx], cc[patches_idx]] not in seen:
+                cho.append(cc)
+                seen.append([cc[pitches_idx], cc[patches_idx]])
 
-        if sig[1]:
-            sigs_dicts.append([sig[0], dict(sig[1])])
-
-    return sigs_dicts
-
-###################################################################################
-
-def get_distance(sig_dict1, 
-                 sig_dict2,
-                 use_min_max_ratios=False,
-                 use_abs_dist=False,
-                 mismatch_penalty=10,
-                 p=3
-                ):
-
-    all_keys = set(sig_dict1.keys()) | set(sig_dict2.keys())
-    
-    total = 0.0
-    
-    for key in all_keys:
-        if key in sig_dict1 and key in sig_dict2:
-            
-            a = sig_dict1.get(key, 0)
-            b = sig_dict2.get(key, 0)
-    
-            if min(a, b) > 0:
-
-                if use_abs_dist:
-                    diff = abs(a - b)
-                
-                else:
-                    if use_min_max_ratios:
-                        ratio = min(a, b) / max(a, b)
-                        diff = abs(1 - ratio)
-
-                    else:
-                        ratio = max(a, b) / min(a, b)
-                        diff = abs(ratio - 1)
-                    
-                total += diff ** p
-                
             else:
-                diff = mismatch_penalty
-                total += diff ** p
+                bp_count += 1
+
+        new_escore.extend(cho)
+        
+    if return_dupes_count:
+        return bp_count
+        
+    else:
+        return new_escore
+
+###################################################################################
+
+def fix_monophonic_score_durations(monophonic_score,
+                                   min_notes_gap=1,
+                                   min_notes_dur=1,
+                                   extend_durs=False
+                                   ):
+  
+    fixed_score = []
+
+    if monophonic_score[0][0] == 'note':
+
+      for i in range(len(monophonic_score)-1):
+        note = monophonic_score[i]
+
+        nmt = monophonic_score[i+1][1]
+
+        if note[1]+note[2] >= nmt:
+          note_dur = max(1, nmt-note[1]-min_notes_gap)
+        else:
+            if extend_durs:
+                note_dur = max(1, nmt-note[1]-min_notes_gap)
+
+            else:
+                note_dur = note[2]
+
+        new_note = [note[0], note[1], note_dur] + note[3:]
+        
+        if new_note[2] >= min_notes_dur:
+            fixed_score.append(new_note)
+      
+      if monophonic_score[-1][2] >= min_notes_dur:
+          fixed_score.append(monophonic_score[-1])
+
+    elif type(monophonic_score[0][0]) == int:
+
+      for i in range(len(monophonic_score)-1):
+        note = monophonic_score[i]
+
+        nmt = monophonic_score[i+1][0]
+
+        if note[0]+note[1] >= nmt:
+            note_dur = max(1, nmt-note[0]-min_notes_gap)
+        else:
+            if extend_durs:
+                note_dur = max(1, nmt-note[0]-min_notes_gap)
+
+            else:
+                note_dur = note[1]
+          
+        new_note = [note[0], note_dur] + note[2:]
+        
+        if new_note[1] >= min_notes_dur:
+            fixed_score.append(new_note)
+      
+      if monophonic_score[-1][1] >= min_notes_dur:
+          fixed_score.append(monophonic_score[-1]) 
+
+    return fixed_score
+
+###################################################################################
+
+def ordered_groups(data, ptc_idx, pat_idx):
+    
+    groups = OrderedDict()
+    
+    for sublist in data:
+        key = tuple([sublist[ptc_idx], sublist[pat_idx]])
+        
+        if key not in groups:
+            groups[key] = []
+            
+        groups[key].append(sublist)
+    
+    return list(groups.items())
+
+###################################################################################
+
+def fix_escore_notes_durations(escore_notes,
+                               min_notes_gap=1,
+                               min_notes_dur=1,
+                               times_idx=1,
+                               durs_idx=2,
+                               channels_idx = 3, 
+                               pitches_idx=4,
+                               patches_idx=6
+                              ):
+
+    notes = [e for e in escore_notes if e[channels_idx] != 9]
+    drums = [e for e in escore_notes if e[channels_idx] == 9]
+    
+    escore_groups = ordered_groups(notes, pitches_idx, patches_idx)
+
+    merged_score = []
+
+    for k, g in escore_groups:
+        if len(g) > 2:
+            fg = fix_monophonic_score_durations(g, 
+                                                min_notes_gap=min_notes_gap, 
+                                                min_notes_dur=min_notes_dur
+                                               )
+            merged_score.extend(fg)
+
+        elif len(g) == 2:
+
+            if g[0][times_idx]+g[0][durs_idx] >= g[1][times_idx]:
+                g[0][durs_idx] = max(1, g[1][times_idx] - g[0][times_idx] - min_notes_gap)
                 
+            merged_score.extend(g)
+
         else:
-            diff = mismatch_penalty
-            total += diff ** p
+            merged_score.extend(g)
+
+    return sorted(merged_score + drums, key=lambda x: x[times_idx])
+
+###################################################################################
+
+def get_MIDI_features_matrixes(path_to_MIDI_file,
+                               transpose_factor=6
+                              ):
+
+    raw_score = midi2single_track_ms_score(path_to_MIDI_file)
+    
+    escore = advanced_score_processor(raw_score, return_enhanced_score_notes=True)[0]
+    
+    escore = augment_enhanced_score_notes(escore, timings_divider=32)
+    
+    escore = remove_duplicate_pitches_from_escore_notes(escore)
+
+    escore = fix_escore_notes_durations(escore, min_notes_gap=0)
+    
+    transpose_factor = max(0, min(6, transpose_factor))
+
+    if transpose_factor > 0:
+        
+        sidx = -transpose_factor
+        eidx = transpose_factor
+
+    else:
+        sidx = 0
+        eidx = 1
+
+    src_matrixes = []
+    
+    for tv in range(sidx, eidx):
+        
+        cscore = chordify_score([1000, escore])
+        
+        matrix = [0] * 961
+
+        pc = cscore[0]
+
+        for c in cscore:
+
+            dtime = max(0, min(127, c[0][1]-pc[0][1]))
+            matrix[dtime] += 1
+
+            for e in c:
+
+                dur = max(1, min(127, e[2]))
+                matrix[dur+128] += 1
+                
+                pat = max(0, min(128, e[6]))
+                matrix[pat+256] += 1
+                
+                ptc = max(1, min(127, e[4]))
+                
+                if e[3] == 9:
+                    ptc += 128
+
+                else:
+                    ptc += tv
+
+                matrix[ptc+384] += 1
+
+            pitches = sorted(set([e[4]+tv for e in c if e[3] != 9]))
+
+            if len(pitches) > 1:
+                tones_chord = sorted(set([p % 12 for p in pitches]))
+
+                if tones_chord not in ALL_CHORDS_SORTED:
+                    tones_chord = check_and_fix_tones_chord(tones_chord)
+
+                chord_tok = ALL_CHORDS_SORTED.index(tones_chord)
+                matrix[chord_tok+640] += 1
+
+            pc = c
             
-    return total ** (1.0 / p)
+        src_matrixes.append(matrix)
+        
+    return src_matrixes
 
 ###################################################################################
 
-def get_distance_np(sig_dict1, 
-                    sig_dict2,
-                    use_min_max_ratios=False,
-                    use_abs_dist=False, 
-                    mismatch_penalty=10,
-                    p=3,
-                    eps=1e-10,
-                    dtype=np.float32
-                   ):
-
-    keys = list(set(sig_dict1.keys()) | set(sig_dict2.keys()))
-
-    freq1 = np.array([sig_dict1.get(k, 0) for k in keys], dtype=dtype)
-    freq2 = np.array([sig_dict2.get(k, 0) for k in keys], dtype=dtype)
-
-    mask = (freq1 > 0) & (freq2 > 0)
-    union_mask = (freq1 > 0) | (freq2 > 0)
-
-    if use_abs_dist:
-        diff = np.where(mask, 
-                        np.abs(np.subtract(freq1, 
-                                           freq2, 
-                                           dtype=dtype)
-                              ), 
-                        mismatch_penalty
-                       )
-
+def fast_mean_std_gpu(
+    arrays: Union[np.ndarray, Iterable[np.ndarray]],
+    chunk_rows: int = 200_000,
+    device: str = "cuda:0",
+    use_gpu: bool = True,
+    verbose: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute per-dimension mean and std using GPU reductions over row-chunks.
+    - arrays: single np.ndarray or iterable of np.ndarray with same D
+    - chunk_rows: rows transferred per chunk (tune for PCIe and GPU memory)
+    - device: torch device string
+    - use_gpu: if False, falls back to CPU chunked method
+    Returns (mean, std) as np.float32 numpy arrays.
+    """
+    # Normalize input
+    if isinstance(arrays, np.ndarray):
+        arrays = (arrays,)
     else:
-        if use_min_max_ratios:
-            diff = np.where(mask, 
-                            np.subtract(1.0, 
-                                        np.divide(np.minimum(freq1, freq2), 
-                                                  np.maximum(freq1, freq2), 
-                                                  dtype=dtype
-                                                 ),
-                                        dtype=dtype), 
-                            mismatch_penalty
-                           )
+        arrays = tuple(arrays)
 
-        else:
-            safe_min = np.where(mask, np.minimum(freq1, freq2) + eps, 1.0)
-            diff = np.where(mask, 
-                            np.subtract(np.divide(np.maximum(freq1, freq2), 
-                                                  safe_min, 
-                                                  dtype=dtype
-                                                 ), 
-                                        1.0, dtype=dtype), 
-                            mismatch_penalty
-                           )
-    
-    sum_term = np.sum(np.power(np.abs(diff), p, dtype=dtype) * union_mask, dtype=dtype)
-    
-    return np.cbrt(sum_term, dtype=dtype) if p == 3 else np.power(sum_term, np.divide(1.0, p, dtype=dtype), dtype=dtype)
+    # Basic checks
+    if len(arrays) == 0:
+        raise ValueError("Provide at least one array")
+    D = arrays[0].shape[1]
+    for a in arrays:
+        if a.shape[1] != D:
+            raise ValueError("All arrays must have same number of columns D")
 
-###################################################################################
+    # CPU fallback (vectorized chunked) if GPU not desired or unavailable
+    if not use_gpu or not torch.cuda.is_available():
+        if verbose:
+            print("GPU unavailable or disabled — using CPU chunked reduction.")
+        total_count = 0
+        sum_ = np.zeros(D, dtype=np.float64)
+        sumsq = np.zeros(D, dtype=np.float64)
+        for arr in arrays:
+            N = arr.shape[0]
+            for i0 in range(0, N, chunk_rows):
+                i1 = min(N, i0 + chunk_rows)
+                block = arr[i0:i1].astype(np.float64, copy=False)
+                sum_ += block.sum(axis=0)
+                sumsq += (block * block).sum(axis=0)
+                total_count += (i1 - i0)
+        if total_count <= 1:
+            mean = sum_.astype(np.float32)
+            std = np.ones_like(mean, dtype=np.float32)
+            return mean, std
+        mean = (sum_ / total_count).astype(np.float32)
+        var = (sumsq - (sum_ * sum_) / total_count) / (total_count - 1)
+        var = np.maximum(var, 1e-12)
+        std = np.sqrt(var).astype(np.float32)
+        return mean, std
 
-def precompute_signatures(signatures_dictionaries,
-                          cpu_dtype=np.float32,
-                          gpu_dtype=cp.float32,
-                          verbose=True
-                         ):
-    
-    if verbose:
-        print("Creating global union array...")
-
-    union_keys = sorted({key for sig in signatures_dictionaries for key in sig[1].keys()})
-
-    union_map = {key: i for i, key in enumerate(union_keys)}
-
-    global_union = cp.array(union_keys)
-
-    num_sigs = len(signatures_dictionaries)
-    num_keys = len(union_keys)
-
-    if verbose:
-        print("Accumulating row/column indices and data on the CPU...")
-
-    rows_list, cols_list, data_list = [], [], []
-    
-    for i, sig in enumerate(tqdm.tqdm(signatures_dictionaries, disable=not verbose)):
-        
-        counter = sig[1]
-        
-        if not counter:
-            continue
-
-        keys = list(counter.keys())
-        
-        col_indices = [union_map[k] for k in keys]
-        values = list(counter.values())
-        n_entries = len(values)
-
-        rows_list.append(np.full(n_entries, i, dtype=np.int32))
-        cols_list.append(np.array(col_indices, dtype=np.int32))
-        data_list.append(np.array(values, dtype=cpu_dtype))
-    
-    if verbose:
-        print("Concatenating index and data arrays...")
-
-    if rows_list:
-        rows_array = np.concatenate(rows_list)
-        cols_array = np.concatenate(cols_list)
-        data_array = np.concatenate(data_list)
-        
-    else:
-        rows_array = np.array([], dtype=np.int32)
-        cols_array = np.array([], dtype=np.int32)
-        data_array = np.array([], dtype=cpu_dtype)
-    
-    if verbose:
-        print("Preallocating dense matrix X on GPU...")
-
-    X = cp.zeros((num_sigs, num_keys), dtype=gpu_dtype)
-    
-    if verbose:
-        print("Performing vectorized assignment on GPU...")
-
-    gpu_rows = cp.array(rows_array)
-    gpu_cols = cp.array(cols_array)
-    gpu_data = cp.array(data_array, dtype=gpu_dtype)
-
-    X[gpu_rows, gpu_cols] = gpu_data
-    
-    if verbose:
-        print("Done!")
-        
-    return X, global_union
-
-###################################################################################
-
-def counter_to_vector(counter, union_keys, dtype=cp.float32):
-
-    vec = cp.zeros(union_keys.shape, dtype=dtype)
-    keys   = cp.array(list(counter.keys()))
-    values = cp.array(list(counter.values()), dtype=dtype)
-    indices = cp.searchsorted(union_keys, keys)
-    
-    vec[indices] = values
-    
-    return vec
-
-###################################################################################
-
-def get_distances_np(trg_signature_dictionary,
-                     X,
-                     global_union,
-                     use_min_max_ratios=False,
-                     use_abs_dist=False,
-                     mismatch_penalty=10,
-                     p=3,
-                     eps=1e-10,
-                     dtype=cp.float32
-                    ):
-
-    target_vec = counter_to_vector(trg_signature_dictionary, global_union)
-    
-    mask_both = (X > 0) & (target_vec > 0)
-
-    if use_abs_dist:
-        diff = cp.where(mask_both,
-                        cp.abs(cp.subtract(X, target_vec, dtype=dtype), dtype=dtype),
-                        mismatch_penalty)        
-
-    else:
-        if use_min_max_ratios:           
-            diff = cp.where(mask_both,
-                            1.0 - cp.divide(cp.minimum(X, target_vec), cp.maximum(X, target_vec), dtype=dtype),
-                            mismatch_penalty)
-        else:
-            safe_min = cp.where(mask_both, cp.minimum(X, target_vec) + eps, 1.0)
-            
-            diff = cp.where(mask_both,
-                            cp.divide(cp.maximum(X, target_vec), safe_min, dtype=dtype) - 1.0,
-                            mismatch_penalty)
-    
-    union_mask = (X > 0) | (target_vec > 0)
-    
-    sum_term = cp.sum(cp.power(np.abs(diff), p, dtype=dtype) * union_mask, axis=1, dtype=dtype)
-    
-    return np.cbrt(sum_term, dtype=dtype) if p == 3 else np.power(sum_term, cp.divide(1.0, p, dtype=dtype), dtype=dtype)
-
-###################################################################################
-
-def get_MIDI_signature(path_to_MIDI_file,
-                       return_full_signature=False,
-                       transpose_factor=0,
-                       convert_counts_to_ratios=True,
-                       omit_drums=True
-                      ):
+    # GPU path
+    dev = torch.device(device)
+    # Use double precision accumulators on GPU for stability
+    sum_t = torch.zeros(D, dtype=torch.float64, device=dev)
+    sumsq_t = torch.zeros(D, dtype=torch.float64, device=dev)
+    total_count = 0
 
     try:
-    
-        raw_score = midi2single_track_ms_score(path_to_MIDI_file)
-        
-        escore = advanced_score_processor(raw_score, return_enhanced_score_notes=True)[0]
-        
-        escore = augment_enhanced_score_notes(escore)
+        for arr in arrays:
+            N = arr.shape[0]
+            # iterate in CPU chunks, transfer each chunk to GPU
+            for i0 in range(0, N, chunk_rows):
+                i1 = min(N, i0 + chunk_rows)
+                block = arr[i0:i1].astype(np.float32, copy=False)
+                # transfer to GPU
+                b_t = torch.from_numpy(block).to(device=dev, dtype=torch.float32)
+                # accumulate in float64
+                sum_t += b_t.double().sum(dim=0)
+                sumsq_t += (b_t.double() * b_t.double()).sum(dim=0)
+                total_count += (i1 - i0)
+                # free chunk
+                del b_t
+                torch.cuda.empty_cache()
+        if total_count <= 1:
+            mean = sum_t.cpu().numpy().astype(np.float32)
+            std = np.ones_like(mean, dtype=np.float32)
+            return mean, std
 
-        if return_full_signature:
-            CHORDS = ALL_CHORDS_SORTED
+        mean_t = (sum_t / total_count).to(dtype=torch.float64)
+        var_t = (sumsq_t - (sum_t * sum_t) / total_count) / (total_count - 1)
+        var_t = torch.clamp(var_t, min=1e-12)
+        std_t = torch.sqrt(var_t)
 
-        else:
-            CHORDS = ALL_CHORDS_FULL
-        
-        drums_offset = len(CHORDS) + 128
-    
-        transpose_factor = max(0, min(6, transpose_factor))
-    
-        if transpose_factor > 0:
-            
-            sidx = -transpose_factor
-            eidx = transpose_factor
-    
-        else:
-            sidx = 0
-            eidx = 1
-    
-        src_sigs = []
-        
-        for i in range(sidx, eidx):
-        
-            escore_copy = copy.deepcopy(escore)
-            
-            for e in escore_copy:
-                e[4] += i
-            
-            cscore = chordify_score([1000, escore_copy])
-            
-            sig = []
-            dsig = []
-            
-            for c in cscore:
-                
-              all_pitches = [e[4] if e[3] != 9 else e[4]+128 for e in c]
-              chord = sorted(set(all_pitches))
-            
-              pitches = sorted([p for p in chord if p < 128], reverse=True)
-              drums = [(d+drums_offset)-128 for d in chord if d > 127]
-            
-              if pitches:
-                if len(pitches) > 1:
-                    
-                  tones_chord = sorted(set([p % 12 for p in pitches]))
-            
-                  if tones_chord not in CHORDS:
-                      tones_chord = check_and_fix_tones_chord(tones_chord, 
-                                                              use_full_chords=not return_full_signature
-                                                             )
-                      
-                  sig_token = CHORDS.index(tones_chord) + 128
-            
-                elif len(pitches) == 1:
-                  sig_token = pitches[0]
-            
-                sig.append(sig_token)
-            
-              if drums:
-                  dsig.extend(drums)
-    
-    
-            if omit_drums:
-                sig_p = dict.fromkeys(sig, 0)
-                
-                for item in sig:
-                    sig_p[item] += 1
-    
-            else:
-                sig_p = dict.fromkeys(sig+dsig, 0)
-            
-                for item in sig+dsig:
-                    sig_p[item] += 1
+        mean = mean_t.cpu().numpy().astype(np.float32)
+        std = std_t.cpu().numpy().astype(np.float32)
+        return mean, std
 
-            if convert_counts_to_ratios:
-                tcount = sum([s[1] for s in sig_p.items()])
-                sig_p = dict([[s[0], s[1] / tcount] for s in sig_p.items()])
-            
-            src_sigs.append(sig_p)
-            
-        return src_sigs
-        
-    except:
-        return []   
+    except RuntimeError as e:
+        # Provide a helpful OOM hint
+        if 'out of memory' in str(e).lower():
+            raise RuntimeError(
+                "CUDA out of memory during mean/std computation. "
+                "Reduce chunk_rows, set use_gpu=False, or free GPU memory."
+            ) from e
+        raise
 
 ###################################################################################
 
-def search_and_filter(sigs_dicts,
-                      X,
-                      global_union,
-                      godzilla_dir='./Godzilla-MIDI-Dataset/MIDIs/',
+def topk_minkowski_between_gpu(
+    X: np.ndarray,
+    Y: np.ndarray,
+    top_k: int = 10,
+    p: float = 2.0,
+    q_batch_size: int = 8192,
+    y_chunk_size: int = 16384,
+    dim_chunk: int = 64,
+    mismatch_threshold: Optional[float] = None,
+    mismatch_penalty: float = 1.0,
+    per_dim_threshold: Optional[np.ndarray] = None,
+    per_dim_penalty: Optional[np.ndarray] = None,
+    precomputed_mean: Optional[np.ndarray] = None,
+    precomputed_std: Optional[np.ndarray] = None,
+    scale_vector: Optional[np.ndarray] = None,
+    alpha: float = 1.0,
+    beta: float = 1.0,
+    use_fp16: bool = True,
+    device: str = "cuda:0",
+    exclude_self: bool = True,
+    verbose: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute top_k nearest neighbors from X to Y using Minkowski distance with mismatch penalty.
+    - X: (Nq, D) np.int32
+    - Y: (Ny, D) np.int32
+    - precomputed_mean/std: optional np.float32 arrays (D,) to skip streaming standardization
+    Returns:
+      indices: (Nq, top_k) int64 indices into Y (-1 if fewer than top_k)
+      scores:  (Nq, top_k) float32 combined scores (smaller is better)
+    """
+    assert X.dtype == np.int32 and Y.dtype == np.int32, "X and Y must be int32"
+    Nq, D = X.shape
+    Ny, D2 = Y.shape
+    assert D == D2, "X and Y must have same number of features (D)"
+
+    dev = torch.device(device if torch.cuda.is_available() else "cpu")
+    torch_dtype = torch.float16 if use_fp16 else torch.float32
+
+    # Prepare standardization stats
+    if precomputed_mean is not None and precomputed_std is not None:
+        mean = precomputed_mean.astype(np.float32)
+        std = precomputed_std.astype(np.float32)
+    else:
+        mean = None
+        std = None
+
+    # thresholds and penalties
+    if per_dim_threshold is not None:
+        thr = per_dim_threshold.astype(np.float32)
+    elif mismatch_threshold is not None:
+        thr = np.full(D, float(mismatch_threshold), dtype=np.float32)
+    else:
+        thr = None
+
+    if per_dim_penalty is not None:
+        pen_vec = per_dim_penalty.astype(np.float32)
+    else:
+        pen_vec = None
+        pen_scalar = float(mismatch_penalty)
+
+    # outputs
+    final_inds = -np.ones((Nq, top_k), dtype=np.int64)
+    final_scores = np.full((Nq, top_k), np.inf, dtype=np.float32)
+
+    def merge_topk(q_start, ids_np, scores_np):
+        Q = ids_np.shape[0]
+        for i in range(Q):
+            qi = q_start + i
+            cur_ids = final_inds[qi]
+            cur_scores = final_scores[qi]
+            mask = np.isfinite(cur_scores)
+            all_ids = np.concatenate([cur_ids[mask], ids_np[i]])
+            all_scores = np.concatenate([cur_scores[mask], scores_np[i]])
+            if all_scores.size == 0:
+                continue
+            k = min(top_k, all_scores.size)
+            idx = np.argpartition(all_scores, k-1)[:k]
+            sel = idx[np.argsort(all_scores[idx])]
+            final_inds[qi, :k] = all_ids[sel]
+            final_scores[qi, :k] = all_scores[sel]
+            if k < top_k:
+                final_inds[qi, k:] = -1
+                final_scores[qi, k:] = np.inf
+
+    # Estimate normalization constants S_d and S_p using a small CPU sample (safe)
+    sample_size = min(2000, max(1, Nq, Ny))
+    y_sample_idx = np.random.choice(Ny, min(sample_size, Ny), replace=False)
+    sample = Y[y_sample_idx].astype(np.float32)
+    if sample.shape[0] < sample_size and Nq > 0:
+        add = min(sample_size - sample.shape[0], Nq)
+        x_sample_idx = np.random.choice(Nq, add, replace=False)
+        sample = np.vstack([sample, X[x_sample_idx].astype(np.float32)])
+    if mean is not None and std is not None:
+        sample = (sample - mean) / std
+    if scale_vector is not None:
+        sample = sample / scale_vector.astype(np.float32)
+
+    s = min(256, sample.shape[0])
+    if s > 1:
+        s_sample = sample[:s]
+        pair_vals = []
+        for a0 in range(0, s, 64):
+            a1 = min(s, a0 + 64)
+            A = s_sample[a0:a1]
+            dif = np.abs(A[:, None, :] - s_sample[None, :, :]) ** p
+            dmat_block = np.sum(dif, axis=2) ** (1.0 / p)
+            pair_vals.append(dmat_block.ravel())
+        all_vals = np.concatenate(pair_vals)
+        all_vals = all_vals[all_vals > 0]
+        S_d = float(np.median(all_vals)) if all_vals.size > 0 else 1.0
+    else:
+        S_d = 1.0
+    S_d = max(S_d, 1e-6)
+    S_p = 1.0 if pen_vec is None else float(np.median(np.abs(pen_vec)))
+    S_p = max(S_p, 1e-6)
+    if verbose:
+        print(f"Estimated S_d={S_d:.6g}, S_p={S_p:.6g}")
+
+    # Determine if we should mask self matches: only when exclude_self True and X and Y share memory and shapes
+    same_memory = False
+    try:
+        same_memory = (X.__array_interface__['data'][0] == Y.__array_interface__['data'][0]) and (Nq == Ny)
+    except Exception:
+        same_memory = False
+    mask_self_enabled = exclude_self and same_memory
+
+    # Main double loop with feature-dimension chunking
+    try:
+        for q0 in range(0, Nq, q_batch_size):
+            q1 = min(Nq, q0 + q_batch_size)
+            Q = q1 - q0
+            q_block = X[q0:q1].astype(np.float32)
+            if mean is not None and std is not None:
+                q_block = (q_block - mean) / std
+            if scale_vector is not None:
+                q_block = q_block / scale_vector.astype(np.float32)
+            q_t_full = torch.from_numpy(q_block).to(device=dev, dtype=torch_dtype)
+
+            for y0 in tqdm.tqdm(range(0, Ny, y_chunk_size), disable=not verbose):
+                y1 = min(Ny, y0 + y_chunk_size)
+                y_block = Y[y0:y1].astype(np.float32)
+                if mean is not None and std is not None:
+                    y_block = (y_block - mean) / std
+                if scale_vector is not None:
+                    y_block = y_block / scale_vector.astype(np.float32)
+                y_t_full = torch.from_numpy(y_block).to(device=dev, dtype=torch_dtype)
+
+                # accumulators on GPU in float32
+                Cc = y1 - y0
+                mink_sum = torch.zeros((Q, Cc), device=dev, dtype=torch.float32)
+                penalty_sum = torch.zeros((Q, Cc), device=dev, dtype=torch.float32)
+
+                # iterate over feature chunks
+                for f0 in range(0, D, dim_chunk):
+                    f1 = min(D, f0 + dim_chunk)
+                    q_sub = q_t_full[:, f0:f1]
+                    y_sub = y_t_full[:, f0:f1]
+                    if use_fp16:
+                        q_acc = q_sub.float()
+                        y_acc = y_sub.float()
+                    else:
+                        q_acc = q_sub
+                        y_acc = y_sub
+
+                    # compute |q_sub - y_sub|^p and sum over features in this slice
+                    diff_chunk = torch.abs(q_acc.unsqueeze(1) - y_acc.unsqueeze(0)).pow(p)
+                    mink_sum += diff_chunk.sum(dim=2)
+
+                    # penalty accumulation if needed
+                    if thr is not None or pen_vec is not None:
+                        diff_raw = torch.abs(q_acc.unsqueeze(1) - y_acc.unsqueeze(0))
+                        if thr is not None:
+                            thr_slice = torch.from_numpy(thr[f0:f1]).to(device=dev, dtype=torch.float32)
+                            exceed = torch.clamp(diff_raw - thr_slice.unsqueeze(0).unsqueeze(0), min=0.0)
+                            if pen_vec is not None:
+                                pen_slice = torch.from_numpy(per_dim_penalty[f0:f1]).to(device=dev, dtype=torch.float32)
+                                penalty_sum += (exceed * pen_slice.unsqueeze(0).unsqueeze(0)).sum(dim=2)
+                            else:
+                                penalty_sum += exceed.sum(dim=2) * pen_scalar
+                        else:
+                            pen_slice = torch.from_numpy(per_dim_penalty[f0:f1]).to(device=dev, dtype=torch.float32)
+                            mask = (diff_raw > 0.0).float()
+                            penalty_sum += (mask * pen_slice.unsqueeze(0).unsqueeze(0)).sum(dim=2)
+
+                    # free small temporaries
+                    del diff_chunk
+                    if 'diff_raw' in locals():
+                        del diff_raw
+                    torch.cuda.empty_cache()
+
+                # finalize minkowski distance
+                mink_dist = mink_sum.pow(1.0 / p)
+
+                # combined score
+                score = alpha * (mink_dist / float(S_d)) + beta * (penalty_sum / float(S_p))
+
+                # mask self matches if enabled
+                if mask_self_enabled:
+                    q_idx_global = torch.arange(q0, q1, device=dev, dtype=torch.long).unsqueeze(1)
+                    y_idx_global = torch.arange(y0, y1, device=dev, dtype=torch.long).unsqueeze(0)
+                    self_mask = (q_idx_global == y_idx_global)
+                    score[self_mask] = float('inf')
+
+                # topk per chunk
+                M = min(top_k, y1 - y0)
+                neg = -score
+                vals, idxs = torch.topk(neg, k=M, dim=1, largest=True, sorted=True)
+                chunk_scores = (-vals).cpu().numpy()
+                chunk_ids = (idxs + y0).cpu().numpy().astype(np.int64)
+
+                merge_topk(q0, chunk_ids, chunk_scores)
+
+                # free chunk-level GPU memory
+                del y_t_full, mink_sum, penalty_sum, mink_dist, score, neg, vals, idxs
+                torch.cuda.empty_cache()
+
+            if verbose:
+                print(f"Processed queries up to {q1}/{Nq}")
+
+        return final_inds, final_scores
+
+    except RuntimeError as e:
+        if 'out of memory' in str(e).lower():
+            raise RuntimeError(
+                "CUDA out of memory. Reduce q_batch_size, y_chunk_size, or dim_chunk; set use_fp16=True; "
+                "ensure no other GPU processes are running. I can also provide a multi‑GPU sharded version."
+            ) from e
+        else:
+            raise
+
+###################################################################################
+
+def search_and_filter(features_matrixes,
+                      features_matrixes_file_names,
+                      discover_dir='./Discover-MIDI-Dataset/MIDIs/',
                       master_dir='./Master-MIDI-Dataset/',
                       output_dir='./Output-MIDI-Dataset/',
-                      number_of_top_matches_to_copy=30,
+                      number_of_top_matches_to_copy=16,
                       include_original_midis=True,
-                      use_full_signatures=True,
                       transpose_factor=6,
-                      convert_counts_to_ratios=True,
-                      omit_drums=True,
-                      use_min_max_ratios=False,
-                      use_abs_dist=False,
-                      mismatch_penalty=10,
-                      p=3,
-                      dtype=cp.float32
+                      top_k=16,
+                      p=3.0,
+                      chunk_rows=200000,
+                      q_batch_size=12,
+                      y_chunk_size=8192,
+                      dim_chunk=961,
+                      mismatch_threshold=None,
+                      mismatch_penalty=10.0,
+                      alpha=1.0,
+                      beta=0.5,
+                      use_fp16=True,
+                      device="cuda",
+                      use_gpu=True,
+                      verbose=True
                      ):
-    
-    """
-    Processes a collection of MIDI files by computing their signatures, comparing them against a reference signature set,
-    and filtering/copying the top matching MIDI files into an output directory structure.
-    
-    This function performs the following main tasks:
-    1. Clamps the provided transpose factor (ensuring a valid range between 0 and 6) and computes the corresponding
-       transposition index range.
-    2. Retrieves a list of MIDI files from the master MIDI dataset directory.
-    3. Ensures that the master and output directories exist (creating them if necessary).
-    4. For each MIDI file in the master dataset:
-        - Extracts its signature using an external signature extraction routine (`get_MIDI_signature`), taking into account
-          options such as whether to use the full signature, whether to omit drum tracks, convert counts to ratios, and how
-          many transpositions to consider.
-        - Iterates over each element (or variation) of the extracted signature (the number of which is implicitly determined
-          by the transposition range) and computes distances between the current signature element and a reference set of
-          signature features (using `get_distances_np`). The distance computation can be modified by several parameters including:
-              • Whether to use min-max ratios or absolute differences.
-              • A mismatch penalty and a power factor (p) for the distance metric.
-              • The data type used for numerical operations.
-        - Sorts the computed distances in ascending order and identifies the top N (as defined by `number_of_top_matches_to_copy`)
-          closest matches.
-        - Creates an output subdirectory (named after the MIDI file, without its extension) inside the specified output directory.
-        - Optionally copies the original MIDI file to the output subdirectory.
-        - For each of the top matching files:
-              • Determines the corresponding filename from `sigs_dicts`.
-              • Constructs a new filename that embeds the computed distance and the transposition index used.
-              • Checks for duplicates (to avoid copying the same file or file with the same distance more than once).
-              • If the source file exists in the specified Godzilla MIDI dataset directory (organized by subdirectories), it 
-                copies the file into the output subdirectory.
-    5. Prints progress messages and a final “Done!” message to the console.
-    
-    Parameters:
-        sigs_dicts (list): A list of signature entries (e.g., tuples or lists) where each entry contains at least the file
-                           identifier (filename) corresponding to a MIDI file in the Godzilla dataset.
-        X (array-like): A reference array or matrix containing feature vectors against which MIDI signatures are compared.
-        global_union (collection): A parameter (e.g., a set or list) representing the global union used during distance
-                                   computation for normalizing or aligning signatures.
-        godzilla_dir (str, optional): Path to the directory containing the Godzilla MIDI Dataset. The dataset is expected
-                                      to be organized in subdirectories (e.g., by the first character of the file name).
-                                      Default is './Godzilla-MIDI-Dataset/MIDIs/'.
-        master_dir (str, optional): Path to the master MIDI dataset directory from which MIDI files are processed.
-                                    Default is './Master-MIDI-Dataset/'.
-        output_dir (str, optional): Path to the directory where the filtered and matched MIDI files will be copied.
-                                    Default is './Output-MIDI-Dataset/'.
-        number_of_top_matches_to_copy (int, optional): The number of top matching MIDI files to copy for each signature
-                                                       computed per MIDI file. Default is 30.
-        include_original_midis (bool, optional): If True, the original master MIDI file is also copied into the output subdirectory.
-                                                 Default is True.
-        use_full_signatures (bool, optional): Determines whether to compute and use full MIDI signatures rather than
-                                              truncated or partial versions. Passed to the signature extraction routine.
-                                              Default is True.
-        transpose_factor (int, optional): Specifies the number of transpositions to consider when extracting MIDI signatures.
-                                          This value is clamped between 0 and 6. A positive value sets a range of transposition
-                                          indices (from -transpose_factor to transpose_factor). Default is 6.
-        convert_counts_to_ratios (bool, optional): If True, converts raw count values in the MIDI signature to ratios,
-                                                   which may be used to normalize the signature before comparison.
-                                                   Default is True.
-        omit_drums (bool, optional): If True, drum tracks are omitted from the MIDI signature extraction, focusing the
-                                     analysis on melodic/harmonic content. Default is True.
-        use_min_max_ratios (bool, optional): When computing distances between signatures, if True, the minimum and maximum
-                                             ratios are used in the computation. Default is False.
-        use_abs_dist (bool, optional): Determines whether absolute differences (as opposed to squared or other metrics)
-                                       are used in the distance calculation. Default is False.
-        mismatch_penalty (numeric, optional): A penalty cost applied for mismatches in the signature comparison routine.
-                                              Default is 10.
-        p (numeric, optional): The exponent or norm parameter used in the distance calculation (e.g., for computing
-                               p-norms). Default is 3.
-        dtype (data-type, optional): The data type (e.g., cp.float32) used for numerical computations. Reduce this value
-                                     if your GPU VRAM is limited. Default is cp.float32.
-    
-    Returns:
-        None
-    
-    Side Effects:
-        - Creates directories specified by `master_dir` and `output_dir` if they do not already exist.
-        - Copies files from the Godzilla MIDI Dataset to the output directory based on matching criteria.
-        - Prints progress and status messages to the console.
-        - Uses external helper functions (such as `create_files_list`, `get_MIDI_signature`, and `get_distances_np`)
-          and relies on modules like os, shutil, and tqdm for file operations and progress tracking.
-        
-    Example:
-        >>> search_and_filter(sigs_dicts, X, global_union)
-        
-        This will process all MIDI files found in the default master directory, compute their signatures with possible transpositions,
-        filter and copy the top 30 matches for each computed signature segment from the Godzilla dataset, and store the results
-        (along with the original MIDI file, if enabled) in the default output directory.
-    
-    Notes:
-        - The transposition range is dynamically set based on the clamped `transpose_factor`; a value of 0 results in no transposition,
-          while a positive value defines a symmetric range (negative to positive).
-        - The function avoids duplicating file copies by tracking filenames and distance values in internal lists.
-        - Proper directory structure in the Godzilla dataset (`godzilla_dir`) is assumed, where MIDI files are organized in subdirectories.
-    """
 
+    """
+    Search and copy nearest-match MIDIs from the Discover MIDI Dataset for each MIDI in a
+    "master" directory.
+    
+    This function performs a nearest-neighbor search between feature matrices extracted
+    from MIDI files in a *master* directory and a precomputed collection of feature
+    matrices (the Discover dataset). For each master MIDI it:
+    
+    1. Extracts feature matrices (optionally transposed across a range of semitone shifts).
+    2. Computes global mean/std of the Discover feature matrices (on GPU if available).
+    3. Computes top-k nearest neighbors using a batched Minkowski-style distance routine
+       (GPU-accelerated).
+    4. Copies the matched MIDI files from the Discover dataset into an output folder
+       named after the master MIDI. Copied filenames are prefixed with the similarity
+       score and the transpose value used.
+    
+    The function is intended for building per-MIDI neighborhoods (example: for dataset
+    analysis, augmentation, or curation). It is optimized for large feature matrices
+    and uses chunked, batched GPU routines to reduce memory pressure.
+    
+    Parameters
+    ----------
+    features_matrixes : numpy.ndarray
+        2D or 3D array (dtype convertible to `np.float32`) containing the precomputed
+        feature matrices for the Discover dataset. Each row (or entry along the first
+        axis) corresponds to one feature-vector / feature-matrix extracted from a single
+        Discover MIDI. This array is used as the search corpus. The function will call
+        `fast_mean_std_gpu` on this array to compute normalization statistics.
+    features_matrixes_file_names : Sequence[str] or Sequence[tuple]
+        A sequence of identifiers that map each row in `features_matrixes` back to the
+        corresponding MIDI file in the Discover dataset. Each element should identify
+        the relative path (without extension) to the MIDI inside `discover_dir`.
+        Two acceptable formats (choose one and be consistent):
+    
+        - **String format**: `'subdirA/subdirB/filename'` (no trailing `.mid`).
+          The function will append `'.mid'` and join with `discover_dir` to form the
+          source path: `os.path.join(discover_dir, 'subdirA', 'subdirB', 'filename.mid')`.
+        - **Tuple/list format**: `('subdirA', 'subdirB', 'filename')`.
+          The function will append `'.mid'` to the last element and join components.
+    
+        NOTE: The implementation suppresses copy errors (broad `except`), so if your
+        naming scheme does not match the expected layout, some matches may be skipped
+        silently.
+    
+    discover_dir : str, optional
+        Root directory of the Discover MIDI dataset (default: `'./Discover-MIDI-Dataset/MIDIs/'`).
+        The function expects the discover files to be organized under this root in the
+        same relative structure referenced by `features_matrixes_file_names`.
+    master_dir : str, optional
+        Directory containing the master MIDI files to process (default:
+        `'./Master-MIDI-Dataset/'`). All files returned by `create_files_list([master_dir])`
+        will be processed in iteration order.
+    output_dir : str, optional
+        Directory where per-master-MIDI subfolders will be created and matched MIDIs copied
+        (default: `'./Output-MIDI-Dataset/'`). For each master MIDI `X.mid`, a folder
+        `output_dir/X/` will be created.
+    number_of_top_matches_to_copy : int, optional
+        (Currently unused in the implementation; retained for API compatibility.)
+    include_original_midis : bool, optional
+        If True, the original master MIDI file is copied into its output folder (default:
+        True).
+    transpose_factor : int, optional
+        Maximum number of semitone transpositions to consider in each direction when
+        extracting features from the master MIDI (default: 6). The value is clamped to
+        the range [0, 6]. If > 0, the function will iterate transpose values from
+        `-transpose_factor` to `+transpose_factor - 1` (inclusive of negative shifts).
+        If 0, no transposition is applied.
+    top_k : int, optional
+        Number of nearest neighbors to return per query feature-matrix (default: 16).
+    p : float, optional
+        Minkowski distance exponent used by `topk_minkowski_between_gpu` (default: 3.0).
+    chunk_rows : int, optional
+        Row chunk size used by `fast_mean_std_gpu` when computing mean/std on the
+        Discover feature matrices (default: 200000). Increase to reduce overhead when
+        memory allows.
+    q_batch_size : int, optional
+        Batch size parameter forwarded to `topk_minkowski_between_gpu` controlling how
+        many query vectors are processed per inner batch (default: 12).
+    y_chunk_size : int, optional
+        Chunk size for the corpus dimension used by the GPU distance routine (default:
+        8192).
+    dim_chunk : int, optional
+        Chunk size for the feature-dimension used by the GPU distance routine (default:
+        961).
+    mismatch_threshold : float or None, optional
+        If provided, a threshold used by the distance routine to detect mismatches. If
+        `None`, no thresholding is applied (default: None).
+    mismatch_penalty : float, optional
+        Penalty added for mismatches when computing distances (default: 10.0).
+    alpha : float, optional
+        Scaling factor forwarded to the distance routine (default: 1.0).
+    beta : float, optional
+        Secondary scaling factor forwarded to the distance routine (default: 0.5).
+    use_fp16 : bool, optional
+        If True, the GPU distance routine may use half-precision (float16) to reduce
+        memory usage and increase throughput (default: True). Use with caution if your
+        GPU or algorithm requires full precision.
+    device : str, optional
+        Device identifier passed to GPU routines (default: `"cuda"`). Use `"cpu"` to
+        force CPU execution if supported by the underlying helper functions.
+    use_gpu : bool, optional
+        Whether to attempt GPU-accelerated computation (default: True). If False, the
+        helper functions should fall back to CPU implementations.
+    verbose : bool, optional
+        If True, prints progress messages to stdout (default: True).
+    
+    Returns
+    -------
+    None
+        This function has no return value. Its primary effect is to create directories
+        under `output_dir` and copy matched MIDI files from `discover_dir` into those
+        directories. Each copied file is named with the pattern:
+    
+            <similarity>_<transpose_value>_<original_filename>.mid
+    
+        where `<similarity>` is the rounded score returned by the distance routine and
+        `<transpose_value>` is the transposition index used when extracting features
+        from the master MIDI.
+    
+    Side effects
+    ------------
+    - Creates `master_dir` and `output_dir` if they do not exist.
+    - Iterates over all MIDI files returned by `create_files_list([master_dir])`.
+    - Calls the following external helper functions which must be available in the
+      calling module's namespace:
+        - `create_files_list(paths) -> list[str]`
+        - `get_MIDI_features_matrixes(midi_path, transpose_factor) -> sequence`
+        - `fast_mean_std_gpu(array, chunk_rows, device, use_gpu, verbose) -> (mean, std)`
+        - `topk_minkowski_between_gpu(src_fmatrixes, features_matrixes, ...) -> (inds, scores)`
+    - Copies files using `shutil.copy2`. Copy errors are caught and ignored (the code
+      uses a broad `except` around each copy), so missing or malformed paths will not
+      raise but will silently skip that match.
+    
+    Notes and implementation details
+    -------------------------------
+    - **Transpose handling**: `transpose_factor` is clamped to [0, 6]. If > 0, the code
+      sets `tsidx = -transpose_factor` and `teidx = transpose_factor` and iterates
+      `range(tsidx, teidx)` when naming copied files. This produces transpose indices
+      in the range `[-transpose_factor, transpose_factor-1]`. If `transpose_factor == 0`
+      the code uses a single index `0`.
+    - **Normalization**: The function computes mean and std of `features_matrixes`
+      using `fast_mean_std_gpu` and passes them to the distance routine. This allows
+      the distance computation to use precomputed normalization statistics.
+    - **Distance computation**: `topk_minkowski_between_gpu` is expected to return two
+      arrays: `inds` (indices of the top-k matches for each query) and `scores`
+      (corresponding similarity/distance scores). The function assumes `inds` and
+      `scores` are indexable and convertible to lists (e.g., numpy arrays).
+    - **File naming and path construction**: The code constructs the source path for
+      each matched MIDI as:
+    
+          discover_dir + fn[0] + '/' + fn[1] + '/' + fn
+    
+      and copies it into `midi_output_dir` with a prefix of the rounded score and
+      transpose index. To avoid surprises, ensure `features_matrixes_file_names`
+      encodes the relative path components in a format compatible with this logic
+      (see the parameter description above). If your discover dataset uses a
+      different layout, adapt the path construction accordingly.
+    - **Error handling**: The inner copy loop wraps each copy in a `try/except` and
+      continues on any exception. This prevents a single missing file from aborting
+      the whole run but also hides the cause of failures. If you need strict error
+      reporting, replace the broad `except` with targeted exception handling and/or
+      logging.
+    - **Performance**: The function is designed for large-scale datasets. Tune
+      `chunk_rows`, `q_batch_size`, `y_chunk_size`, `dim_chunk`, and `use_fp16` to
+      balance memory usage and throughput for your hardware. When `use_gpu` is True
+      and `device` points to a CUDA device, the heavy computations are delegated to
+      GPU-accelerated helper functions.
+    
+    Examples
+    --------
+    Basic usage (assumes helper functions and data are prepared):
+    
+    >>> search_and_filter(
+    ...     features_matrixes=discover_features_array,
+    ...     features_matrixes_file_names=discover_file_keys,
+    ...     discover_dir='/data/Discover-MIDI-Dataset/MIDIs/',
+    ...     master_dir='/data/Master-MIDI-Dataset/',
+    ...     output_dir='/data/Output-MIDI-Dataset/',
+    ...     transpose_factor=3,
+    ...     top_k=8,
+    ...     p=2.0,
+    ...     use_fp16=False,
+    ...     device='cuda:0',
+    ...     verbose=True
+    ... )
+    
+    Tips
+    ----
+    - Validate that `features_matrixes.shape[0] == len(features_matrixes_file_names)`.
+    - If you observe silent skips of matched files, run a small test with
+      `verbose=True` and inspect the expected source paths to ensure they exist.
+    - If you do not have a GPU or the helper functions do not support GPU, set
+      `use_gpu=False` and `device='cpu'`.
+    - Consider modifying the copy naming scheme if you require a different sort
+      order or filename format.
+    
+    See also
+    --------
+    create_files_list, get_MIDI_features_matrixes, fast_mean_std_gpu,
+    topk_minkowski_between_gpu
+    
+    """
+    
     transpose_factor = max(0, min(6, transpose_factor))
     
     if transpose_factor > 0:
@@ -2326,172 +2586,117 @@ def search_and_filter(sigs_dicts,
     for fnum, midi in enumerate(master_midis):
         
         inp_fn = os.path.basename(midi)
-        
-        print("=" * 70)
-        print("Processing MIDI file #", fnum + 1, "/", len(master_midis))
-        print("MIDI file name:", inp_fn)
-        print("=" * 70)
+
+        if verbose:
+            print("=" * 70)
+            print("Processing MIDI file #", fnum + 1, "/", len(master_midis))
+            print("MIDI file name:", inp_fn)
+            print("=" * 70)
     
-        trg_sigs = get_MIDI_signature(midi,
-                                      return_full_signature=use_full_signatures,
-                                      transpose_factor=transpose_factor,
-                                      convert_counts_to_ratios=convert_counts_to_ratios,
-                                      omit_drums=omit_drums,
+        src_fmatrixes = get_MIDI_features_matrixes(midi,
+                                                   transpose_factor=transpose_factor
+                                                  )
+
+        src_fmatrixes = np.array(src_fmatrixes, dtype=np.int32)
+        
+        if verbose:
+            print('Computing mean/std...')
+        mean, std = fast_mean_std_gpu((features_matrixes.astype(np.float32),
+                                       src_fmatrixes.astype(np.float32)
+                                      ),
+                                      chunk_rows=chunk_rows,
+                                      device=device,
+                                      use_gpu=use_gpu,
+                                      verbose=verbose
                                      )
-    
-        tv = list(range(tsidx, teidx))
+        if verbose:    
+            print('Calculating distances...')
         
-        seen = []
-        rseen = []
-    
-        for i in tqdm.tqdm(range(len(trg_sigs))):
+        inds, scores = topk_minkowski_between_gpu(
+            src_fmatrixes,
+            features_matrixes,
+            top_k=top_k,
+            p=p,
+            q_batch_size=q_batch_size,
+            y_chunk_size=y_chunk_size,
+            dim_chunk=dim_chunk,
+            mismatch_threshold=mismatch_threshold,
+            mismatch_penalty=mismatch_penalty,
+            precomputed_mean=mean,
+            precomputed_std=std,
+            alpha=alpha,
+            beta=beta,
+            use_fp16=use_fp16,
+            device=device,
+            verbose=verbose
+        )
+        
+        if verbose:
+            print('Copying matched MIDIs...')
+        
+        out_dir = os.path.splitext(inp_fn)[0]
+
+        midi_output_dir = os.path.join(output_dir, out_dir)
+        os.makedirs(midi_output_dir, exist_ok=True)
+
+        if include_original_midis:
+            shutil.copy2(midi, os.path.join(midi_output_dir, inp_fn))
             
-            dists = get_distances_np(trg_sigs[i],
-                                     X,
-                                     global_union,
-                                     use_min_max_ratios=use_min_max_ratios,
-                                     use_abs_dist=use_abs_dist,
-                                     mismatch_penalty=mismatch_penalty,
-                                     p=p,
-                                     dtype=dtype
-                                    )
+        for idxs, scos, tv in zip(inds.tolist(), scores.tolist(), range(tsidx, teidx)):
         
-            sorted_indices = cp.argsort(dists).tolist()
-            out_dir = os.path.splitext(inp_fn)[0]
-    
-            midi_output_dir = os.path.join(output_dir, out_dir)
-            os.makedirs(midi_output_dir, exist_ok=True)
-
-            if include_original_midis:
-                shutil.copy2(midi, os.path.join(midi_output_dir, inp_fn))
-
-            for _, idx in enumerate(sorted_indices[:number_of_top_matches_to_copy]):
-                
-                fn = sigs_dicts[idx][0]
-                dist = dists[idx]
-                
-                new_fn = os.path.join(midi_output_dir, f"{dist}_{tv[i]}_{fn}.mid")
+            for i, s in zip(idxs, scos):
         
-                if fn not in seen and dist not in rseen:
+                try:
+                    fn = features_matrixes_file_names[i] + '.mid'
+                    sim = round(s, 8)
                 
-                    src_fn = os.path.join(godzilla_dir, fn[0], f"{fn}.mid")
+                    shutil.copy2(discover_dir + fn[0] + '/' + fn[1] + '/' + fn, midi_output_dir + '/' + str(sim) + '_' + str(tv) + '_' + fn)
+        
+                except Exception as ex:
+                    if verbose:
+                        print('=' * 70)
+                        print('Exception error!!!')
+                        print(ex)
+                        print('File name:', fn)
+                        
+                        continue
                     
-                    if os.path.exists(src_fn):
-                        shutil.copy2(src_fn, new_fn)
-                        seen.append(fn)
-                        rseen.append(dist)
-    
-    print("=" * 70)
-    print("Done!")
-    print("=" * 70)
+    if verbose:    
+        print("=" * 70)
+        print("Done!")
+        print("=" * 70)
     
 ###################################################################################
 
-def consequtive_search_and_filter(sigs_dicts,
-                                  godzilla_dir = './Godzilla-MIDI-Dataset/MIDIs/',
-                                  master_dir = './Master-MIDI-Dataset/',
-                                  output_dir = './Output-MIDI-Dataset/',
-                                  number_of_top_matches_to_copy = 30,
-                                  include_original_midis=True,
-                                  use_full_signatures=True,
-                                  transpose_factor=0,
-                                  convert_counts_to_ratios=True,
-                                  omit_drums=True,
-                                  use_min_max_ratios=False,
-                                  use_abs_dist=False,
-                                  mismatch_penalty=10,
-                                  p=3,
-                                  dtype=np.float32
-                                 ):
+def load_features_matrixes(features_matrixes_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz',
+                           features_matrixes_file_names_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes_file_names.pickle',
+                           verbose=True
+                          ):
 
-    transpose_factor = max(0, min(6, transpose_factor))
-    
-    if transpose_factor > 0:
-        
-        tsidx = -transpose_factor
-        teidx = transpose_factor
-    
-    else:
-        tsidx = 0
-        teidx = 1
-
-    master_midis = create_files_list([master_dir])
-
-    os.makedirs(master_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
-   
-    for fnum, midi in enumerate(master_midis):
-    
-        inp_fn = os.path.basename(midi)
-    
+    if verbose:
         print('=' * 70)
-        print('Processing MIDI file #', fnum+1, '/', len(master_midis))
-        print('MIDI file name:', inp_fn)
+        print('Loading features matrixes...')
+
+    fmats = np.load(features_matrixes_path)['features_matrixes']
+
+    if verbose:
+        print('Done!')
         print('=' * 70)
     
-        trg_sigs = get_MIDI_signature(midi,
-                                      return_full_signature=use_full_signatures,
-                                      transpose_factor=transpose_factor,
-                                      convert_counts_to_ratios=convert_counts_to_ratios,
-                                      omit_drums=omit_drums,
-                                      )
-    
-        tv = list(range(tsidx, teidx))
+        print('Loading features matrixes files names...')
+
+    with open(features_matrixes_file_names_path, 'rb') as f:
+        fmats_fnames = pickle.load(f)
         
-        seen = []
-        rseen = []
-    
-        for i in range(len(trg_sigs)):
+    if verbose:
+        print('Done!')
+        print('=' * 70)
 
-            dists = []
-            
-            for md5, sig in tqdm.tqdm(sigs_dicts, desc=f'Processing target signature {i+1}'):
-            
-                dist = get_distance_np(trg_sigs[i],
-                                       sig,   
-                                       use_min_max_ratios=use_min_max_ratios,
-                                       use_abs_dist=use_abs_dist,
-                                       mismatch_penalty=mismatch_penalty,
-                                       p=3,
-                                       dtype=dtype
-                                      )
-
-                dists.append(dist.tolist())
-
-            dists = np.array(dists)
-    
-            sorted_indices = np.argsort(dists).tolist()
-    
-            out_dir = os.path.splitext(inp_fn)[0]
-    
-            os.makedirs(output_dir+'/'+out_dir, exist_ok=True)
-
-            if include_original_midis:
-                shutil.copy2(midi, output_dir+'/'+out_dir+'/'+inp_fn)
-
-            for _, idx in enumerate(sorted_indices[:number_of_top_matches_to_copy]):          
-                
-                fn = sigs_dicts[idx][0]
-                dist = dists[idx]
-        
-                new_fn = output_dir+out_dir+'/'+str(dist)+'_'+str(tv[i])+'_'+fn+'.mid'
-        
-                if fn not in seen and dist not in rseen:
-                    
-                    src_fn = godzilla_dir+fn[0]+'/'+fn+'.mid'
-                    
-                    if os.path.exists(src_fn):
-                        shutil.copy2(src_fn, new_fn)
-                        seen.append(fn)
-                        rseen.append(dist)
-
-    print('=' * 70)
-    print('Done!')
-    print('=' * 70)
+    return fmats, fmats_fnames
 
 ###################################################################################
 
-def read_jsonl(file_name='./Godzilla-MIDI-Dataset/DATA/Signatures/all_midis_signatures', 
+def read_jsonl(file_name='./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_files_list', 
                file_ext='.jsonl',
                max_lines=-1,
                verbose=True
@@ -2561,8 +2766,8 @@ def write_file(data: bytes, target_path: str):
 
 ###################################################################################
 
-def parallel_extract(tar_path: str = './Godzilla-MIDI-Dataset/Godzilla-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
-                     extract_path: str = './Godzilla-MIDI-Dataset/', 
+def parallel_extract(tar_path: str = './Discover-MIDI-Dataset/Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
+                     extract_path: str = './Discover-MIDI-Dataset/', 
                      max_workers: int = 256, 
                      batch_size: int = 16384
                     ):
@@ -2607,9 +2812,9 @@ def parallel_extract(tar_path: str = './Godzilla-MIDI-Dataset/Godzilla-MIDI-Data
 
 ###################################################################################
 
-def download_dataset(repo_id='projectlosangeles/Godzilla-MIDI-Dataset',
-                     filename='Godzilla-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
-                     local_dir='./Godzilla-MIDI-Dataset/'
+def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
+                     filename='Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
+                     local_dir='./Discover-MIDI-Dataset/'
                     ):
 
     result = hf_hub_download(repo_id=repo_id,
@@ -2622,41 +2827,38 @@ def download_dataset(repo_id='projectlosangeles/Godzilla-MIDI-Dataset',
 
 ###################################################################################
 
-def signatures_from_files_list(files_list='./Godzilla-MIDI-Dataset/DATA/Files Lists/identified_midis_files_list.jsonl',
-                               signatures_list='./Godzilla-MIDI-Dataset/DATA/Signatures/all_midis_signatures.jsonl',
-                               max_lines=-1,
-                               verbose=True
-                              ):
+def render_midi(input_midi_file,
+                output_wav_file='',
+                sf2_path='./Discover-MIDI-Dataset/SOUNDFONTS/SGM-v2.01-YamahaGrand-Guit-Bass-v2.7.sf2',
+                verbose=True
+               ):
+
+    if verbose:
+        print('=' * 70)
+        print('Rendering MIDI...')
+        
+    wav_data = midirenderer.render_wave_from(
+        Path(sf2_path).read_bytes(),
+        Path(input_midi_file).read_bytes()
+    )
+
+    if verbose:
+        print('Done!')
+        print('=' * 70)
     
-    if type(files_list) == str:
-        fi_lst = read_jsonl(files_list, max_lines=max_lines, verbose=verbose)
+        print('Saving rendered MIDI...')
 
-    else:
-        fi_lst = files_list
-
-    if type(signatures_list) == str:
-        sig_lst = read_jsonl(signatures_list, max_lines=max_lines, verbose=verbose)
-
-    else:
-        sig_lst = signatures_list
-
-    sigs_md5s_dic = {}
-
-    for i, s in enumerate(tqdm.tqdm(sig_lst, disable=not verbose)):
-        sigs_md5s_dic[s['md5']] = i
-
-    out_sigs_lst = []
+    if not output_wav_file:
+        output_wav_file = os.path.splitext(input_midi_file)[0] + '.wav'
     
-    for fi in tqdm.tqdm(fi_lst, disable=not verbose):
-        fmd5 = fi['md5']
-    
-        if fmd5 in sigs_md5s_dic:
-            sidx = sigs_md5s_dic[fmd5]
-            out_sigs_lst.append(sig_lst[sidx])
+    with open(output_wav_file, 'wb') as fi:
+        fi.write(wav_data)
 
-    out_sigs_lst.sort(key=lambda x: x['md5'])
+    if verbose:
+        print('Done!')
+        print('=' * 70)
 
-    return out_sigs_lst
+    return output_wav_file
 
 ###################################################################################
 
@@ -2665,5 +2867,5 @@ print('Enjoy! :)')
 print('=' * 70)
 
 ###################################################################################
-# This is the end of the godzilla_search_and_filter Python module
+# This is the end of the Discover_search_and_filter Python module
 ###################################################################################
