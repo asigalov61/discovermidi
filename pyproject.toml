@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "discovermidi"
-version = "25.12.20"
+version = "25.12.21"
 description = "Ultimate MIDI dataset for MIDI music discovery and symbolic music AI purposes"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
