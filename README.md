@@ -5,9 +5,9 @@
 
 ***
 
-## Introduction
+### Introduction
 
-### Bright, fast, and built for discovery — the **Discover MIDI Dataset** is a massive, carefully curated collection of symbolic music designed for music information retrieval (MIR), creative exploration, and training symbolic music AI. It contains **over 6.74M unique, de‑duplicated, and normalized MIDI files**, comprehensive metadata, and GPU‑accelerated search tooling so researchers and creators can find, analyze, and prototype with MIDI at production scale.
+#### Bright, fast, and built for discovery — the **Discover MIDI Dataset** is a massive, carefully curated collection of symbolic music designed for music information retrieval (MIR), creative exploration, and training symbolic music AI. It contains **over 6.74M unique, de‑duplicated, and normalized MIDI files**, comprehensive metadata, and GPU‑accelerated search tooling so researchers and creators can find, analyze, and prototype with MIDI at production scale.
 
 ### Overview
 
