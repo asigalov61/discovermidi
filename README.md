@@ -4,7 +4,6 @@
 <img width="1024" height="1024" alt="Discover-MIDI-Dataset" src="https://github.com/user-attachments/assets/a729b21a-e666-4996-8f61-78ae8c589ba1" />
 
 ***
-***
 
 ## Dataset features
 
@@ -37,10 +36,10 @@
 
 ### Optional packages
 
-#### Packages for Fast Parallel Extract module
+#### Packages for fast_parallel_extract module
 
 ```sh
-# The following command will install packages for Fast Parallel Extract module
+# The following command will install packages for fast_parallel_extract module
 # It will allow you to extract (untar) Godzilla MIDI Dataset much faster
 
 !sudo apt update -y
@@ -58,6 +57,20 @@
 !sudo apt install fluidsynth
 ```
 
+#### Packages for midi_loops_extractor codebase
+
+```sh
+# The following command will install packages for midi_loops_extractor codebase
+# It will allow you to extract loops from Godzilla MIDI Dataset MIDIs
+# Please see README.md in discovermidi/midi_loops_extractor/ for use instructions
+
+!pip install pretty-midi
+!pip install symusic
+!pip install miditok
+!pip install numba
+!pip install numpy==1.24.4
+```
+
 ***
 
 ## Quick-start use example
@@ -72,7 +85,7 @@ discovermidi.download_dataset()
 # Extract Godzilla MIDI Dataset with built-in function (slow)
 discovermidi.parallel_extract()
 
-# Or you can extract much faster if you have installed the optional packages for Fast Parallel Extract
+# Or you can extract much faster if you have installed the optional packages for Fast Parallel Extract module
 # from discovermidi import fast_parallel_extract
 # fast_parallel_extract.fast_parallel_extract()
 
@@ -91,24 +104,26 @@ discovermidi.search_and_filter(features_matrixes, features_matrixes_file_names)
 ## Dataset structure information
 
 ```
-Discover-MIDI-Dataset/               # Dataset root dir
+Discover-MIDI-Dataset/              # Dataset root dir
 ├── ARTWORK/                        # Concept artwork
 │   ├── Illustrations/              # Concept illustrations
 │   ├── Logos/                      # Dataset logos
 │   └── Posters/                    # Dataset posters
 ├── CODE/                           # Root dir for supplemental python code and python modules
-│   ├── midi_loops_extractor/       # MIDI loops extractor code dir
+│   └── midi_loops_extractor/       # MIDI loops extractor codebase dir
 ├── DATA/                           # Dataset (meta)data dir
-│   ├── Features Counts/            # Features counts for each MIDI
-│   ├── Features Matrixes/          # Features counts matrixes for each MIDI
+│   ├── Features Counts/            # Features counts for all MIDIs
+│   ├── Features Matrixes/          # Features counts matrixes for all MIDIs
 │   ├── Files Lists/                # Files lists by MIDIs types and categories
+│   ├── Genres MIDIs/               # Genres, artists and titles data for all matched MIDIs
 │   ├── Identified MIDIs/           # Comprehensive data for identified MIDIs
 │   ├── Karaoke MIDIs/              # Karaoke MIDIs data
-│   ├── MIDIs Lyrics/               # MIDIs lyrics data
+│   ├── Lyrics MIDIs/               # Lyrics for matched MIDIs
 │   ├── Mono Melodies/              # Data for all MIDIs with monophonic melodies
-│   ├── Pitches Patches Counts/     # Pitches-patches counts for all MIDIs 
-├── MIDIs/                          # Root MIDIs dir
-└── SOUNDFONTS/                     # Select high-quality Sound Font banks to render MIDIs
+│   ├── Pitches Patches Counts/     # Pitches-patches counts for all MIDIs
+│   └── Quality/                    # Quality data for most MIDIs
+├── MIDIs/                          # Root MIDI files dir
+└── SOUNDFONTS/                     # Select high-quality Sound Fonts banks to render MIDIs
 ```
 
 ***
@@ -149,9 +164,27 @@ Discover-MIDI-Dataset/               # Dataset root dir
 
 ****
 
+### Genres MIDIs
+
+#### This data contains information about all MIDIs that were definitively identified by music genre
+
+****
+
 ### Identified MIDIs
 
 #### This data contains information about all MIDIs that were definitively identified by artist and title
+
+****
+
+### Karaoke MIDIs
+
+#### This data contains information about all MIDIs that were definitively identified as Karaoke
+
+****
+
+### Lyrics MIDIs
+
+#### This data contains information about all MIDIs that were definitively matched to corresponding lyrics
 
 ****
 
@@ -168,6 +201,13 @@ Discover-MIDI-Dataset/               # Dataset root dir
 
 #### This data contains the pitches-patches counts for all MIDIs in the dataset
 #### This information is very useful for de-duping, MIR and statistical analysis
+
+****
+
+### Quality
+
+#### This data contains detailed quality information for most MIDIs in the dataset
+#### Each data entry contains information about quality of MIDI alignment, chords, durations, pitches and type
 
 ****
 
