@@ -5,7 +5,7 @@ r'''############################################################################
 #
 #
 #	Discover Search and Filter Python Module
-#	Version 2.0
+#	Version 1.0
 #
 #   NOTE: Module code starts after the partial MIDI.py module @ line 1122
 #
@@ -1933,6 +1933,90 @@ def get_MIDI_features_matrixes(path_to_MIDI_file,
                                transpose_factor=6
                               ):
 
+    """Compute fixed-size feature matrices from a single MIDI file for the Discover MIDI Dataset.
+    
+    This function converts a MIDI file into one or more compact, fixed-length feature
+    vectors ("matrices") that summarize temporal, rhythmic, pattern, pitch, and chord
+    information extracted from a processed, single-track representation of the score.
+    It applies a sequence of preprocessing steps (single-track conversion, advanced
+    score processing, augmentation, duplicate removal, and duration fixing), optionally
+    generates transposed variants, chordifies the score, and accumulates counts into
+    a 961-dimensional integer vector for each transposition value.
+    
+    Parameters
+    ----------
+    path_to_MIDI_file : str or pathlib.Path
+        Path to the input MIDI file to process. The file is read and converted to a
+        single-track microsecond-resolution score by `midi2single_track_ms_score`.
+    transpose_factor : int, optional
+        Maximum absolute semitone transposition applied to non-percussion pitches.
+        The value is clamped to the range [0, 6]. If `transpose_factor == 0`,
+        the function returns a single matrix for the original pitch set. If
+        `transpose_factor > 0`, the function returns matrices for transposition
+        values `tv` in `range(-transpose_factor, transpose_factor)` (i.e., `-n .. n-1`).
+        Default: `6`.
+    
+    Returns
+    -------
+    list[list[int]]
+        A list of integer vectors (Python lists) where each vector has length 961.
+        Each element is a non-negative integer count aggregated from the chordified
+        score. The list order corresponds to the transposition values iterated
+        (ascending `tv` from `-transpose_factor` to `transpose_factor - 1` when
+        `transpose_factor > 0`, otherwise a single element for `tv == 0`).
+    
+    Feature vector layout (index ranges)
+    -----------------------------------
+    - **0 .. 127** : delta-time bins — counts of inter-chord onset time differences
+      clamped to [0, 127]
+    - **128 .. 255** : duration bins — counts of note durations (clamped to [1,127])
+      stored at index `duration + 128`.
+    - **256 .. 383** : pattern bins — counts of pattern identifiers (clamped to [0,128])
+      stored at index `pattern + 256`.
+    - **384 .. 639** : pitch/token bins — counts of pitch tokens (256 slots). For each
+      note event a pitch token index is computed from the MIDI pitch and channel:
+      - For percussion events (`e[3] == 9`) an offset of 128 is added to the pitch
+        token before indexing.
+      - For non-percussion events the current transposition value `tv` is added to
+        the pitch before indexing.
+      The pitch token is clamped to the valid range before being stored at `index + 384`.
+    - **640 .. 960** : chord token bins — counts of chord-type tokens. For chordified
+      chord events with more than one pitch, the chord's pitch-class set (mod 12)
+      is matched against `ALL_CHORDS_SORTED`. If a chord is not present, it is
+      corrected via `check_and_fix_tones_chord` before indexing; the resulting
+      chord token index is stored at `index + 640`. The number of chord tokens is
+      `961 - 640 = 321`.
+    
+    Notes
+    -----
+    - The function relies on the following helper functions and global constants
+      being available in scope: `midi2single_track_ms_score`, `advanced_score_processor`,
+      `augment_enhanced_score_notes`, `remove_duplicate_pitches_from_escore_notes`,
+      `fix_escore_notes_durations`, `chordify_score`, `ALL_CHORDS_SORTED`, and
+      `check_and_fix_tones_chord`.
+    - Preprocessing steps:
+      1. Convert MIDI to a single-track microsecond score.
+      2. Run advanced score processing and request enhanced note structures.
+      3. Augment enhanced notes (timings divided by 32).
+      4. Remove duplicate pitches from enhanced notes.
+      5. Fix note durations with `min_notes_gap=0`.
+    - The function clamps numeric values (durations, patterns, pitch tokens, delta
+      times) to avoid out-of-range indices.
+    - Returned matrices are Python lists of integers; convert to `numpy` arrays if
+      needed for downstream numeric processing.
+    - Memory and performance: the function processes the entire score in memory;
+      for extremely large or pathological MIDI files, consider pre-filtering or
+      streaming approaches.
+    
+    Errors and exceptions
+    ---------------------
+    - File-related errors (e.g., `FileNotFoundError`, `OSError`) may be raised by
+      `midi2single_track_ms_score` or underlying file I/O.
+    - If any of the helper functions raise exceptions (parsing, validation, or
+      indexing errors), those exceptions will propagate to the caller.
+    
+    """
+
     raw_score = midi2single_track_ms_score(path_to_MIDI_file)
     
     escore = advanced_score_processor(raw_score, return_enhanced_score_notes=True)[0]
@@ -2012,7 +2096,8 @@ def fast_mean_std_gpu(
     device: str = "cuda:0",
     use_gpu: bool = True,
     verbose: bool = True
-) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
+    
     """
     Compute per-dimension mean and std using GPU reductions over row-chunks.
     - arrays: single np.ndarray or iterable of np.ndarray with same D
@@ -2021,6 +2106,7 @@ def fast_mean_std_gpu(
     - use_gpu: if False, falls back to CPU chunked method
     Returns (mean, std) as np.float32 numpy arrays.
     """
+    
     # Normalize input
     if isinstance(arrays, np.ndarray):
         arrays = (arrays,)
@@ -2129,7 +2215,8 @@ def topk_minkowski_between_gpu(
     device: str = "cuda:0",
     exclude_self: bool = True,
     verbose: bool = True
-) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
+    
     """
     Compute top_k nearest neighbors from X to Y using Minkowski distance with mismatch penalty.
     - X: (Nq, D) np.int32
@@ -2139,6 +2226,7 @@ def topk_minkowski_between_gpu(
       indices: (Nq, top_k) int64 indices into Y (-1 if fewer than top_k)
       scores:  (Nq, top_k) float32 combined scores (smaller is better)
     """
+    
     assert X.dtype == np.int32 and Y.dtype == np.int32, "X and Y must be int32"
     Nq, D = X.shape
     Ny, D2 = Y.shape
@@ -2346,10 +2434,9 @@ def search_and_filter(features_matrixes,
                       discover_dir='./Discover-MIDI-Dataset/MIDIs/',
                       master_dir='./Master-MIDI-Dataset/',
                       output_dir='./Output-MIDI-Dataset/',
-                      number_of_top_matches_to_copy=16,
+                      max_number_of_top_k_matches=16,
                       include_original_midis=True,
-                      transpose_factor=6,
-                      top_k=16,
+                      source_midis_transpose_factor=6,
                       p=3.0,
                       chunk_rows=200000,
                       q_batch_size=12,
@@ -2365,210 +2452,179 @@ def search_and_filter(features_matrixes,
                       verbose=True
                      ):
 
-    """
-    Search and copy nearest-match MIDIs from the Discover MIDI Dataset for each MIDI in a
-    "master" directory.
+    """Search and copy nearest-neighbor MIDI matches from the Discover MIDI Dataset.
     
-    This function performs a nearest-neighbor search between feature matrices extracted
-    from MIDI files in a *master* directory and a precomputed collection of feature
-    matrices (the Discover dataset). For each master MIDI it:
+    Summary
+    ----------------
+    Perform an efficient, large-scale nearest-neighbor search between a precomputed
+    database of MIDI feature vectors and every MIDI file in a master directory, then
+    export the matched MIDI files into organized per-master output folders. For each
+    master MIDI the routine:
     
-    1. Extracts feature matrices (optionally transposed across a range of semitone shifts).
-    2. Computes global mean/std of the Discover feature matrices (on GPU if available).
-    3. Computes top-k nearest neighbors using a batched Minkowski-style distance routine
-       (GPU-accelerated).
-    4. Copies the matched MIDI files from the Discover dataset into an output folder
-       named after the master MIDI. Copied filenames are prefixed with the similarity
-       score and the transpose value used.
+    - extracts one or more feature-matrix representations (optionally across a range
+      of transpositions),
+    - computes normalization statistics (mean and standard deviation) jointly with
+      the database to enable normalized distance computations,
+    - runs a GPU-accelerated top-k Minkowski search to obtain nearest neighbors and
+      similarity scores for each source feature vector,
+    - copies the matched MIDI files from the Discover dataset into a dedicated output
+      folder named after the master MIDI, prefixing each copied filename with the
+      rounded similarity score and the transpose offset.
     
-    The function is intended for building per-MIDI neighborhoods (example: for dataset
-    analysis, augmentation, or curation). It is optimized for large feature matrices
-    and uses chunked, batched GPU routines to reduce memory pressure.
+    This function is optimized for throughput and memory efficiency on large datasets:
+    it uses chunking for mean/std computation and for the top-k search, supports
+    FP16 arithmetic, and exposes multiple parameters to tune batching and memory
+    usage for different GPU/CPU environments.
     
     Parameters
     ----------
     features_matrixes : numpy.ndarray
-        2D or 3D array (dtype convertible to `np.float32`) containing the precomputed
-        feature matrices for the Discover dataset. Each row (or entry along the first
-        axis) corresponds to one feature-vector / feature-matrix extracted from a single
-        Discover MIDI. This array is used as the search corpus. The function will call
-        `fast_mean_std_gpu` on this array to compute normalization statistics.
-    features_matrixes_file_names : Sequence[str] or Sequence[tuple]
-        A sequence of identifiers that map each row in `features_matrixes` back to the
-        corresponding MIDI file in the Discover dataset. Each element should identify
-        the relative path (without extension) to the MIDI inside `discover_dir`.
-        Two acceptable formats (choose one and be consistent):
-    
-        - **String format**: `'subdirA/subdirB/filename'` (no trailing `.mid`).
-          The function will append `'.mid'` and join with `discover_dir` to form the
-          source path: `os.path.join(discover_dir, 'subdirA', 'subdirB', 'filename.mid')`.
-        - **Tuple/list format**: `('subdirA', 'subdirB', 'filename')`.
-          The function will append `'.mid'` to the last element and join components.
-    
-        NOTE: The implementation suppresses copy errors (broad `except`), so if your
-        naming scheme does not match the expected layout, some matches may be skipped
-        silently.
-    
+        2D array of precomputed feature vectors for the Discover dataset (shape: N x D).
+        Values will be cast to `np.float32` for normalization and distance computation.
+    features_matrixes_file_names : Sequence[str]
+        Sequence of identifiers (md5-like strings) corresponding to rows in
+        `features_matrixes`. Each identifier is used to reconstruct the original
+        filename as `<md5>.mid` and to locate the file under
+        `discover_dir/<md5[0]>/<md5[1]>/<md5>.mid`.
     discover_dir : str, optional
-        Root directory of the Discover MIDI dataset (default: `'./Discover-MIDI-Dataset/MIDIs/'`).
-        The function expects the discover files to be organized under this root in the
-        same relative structure referenced by `features_matrixes_file_names`.
+        Root path to the Discover MIDI dataset (default './Discover-MIDI-Dataset/MIDIs/').
     master_dir : str, optional
-        Directory containing the master MIDI files to process (default:
-        `'./Master-MIDI-Dataset/'`). All files returned by `create_files_list([master_dir])`
-        will be processed in iteration order.
+        Directory containing master MIDI files to search from (default './Master-MIDI-Dataset/').
     output_dir : str, optional
-        Directory where per-master-MIDI subfolders will be created and matched MIDIs copied
-        (default: `'./Output-MIDI-Dataset/'`). For each master MIDI `X.mid`, a folder
-        `output_dir/X/` will be created.
-    number_of_top_matches_to_copy : int, optional
-        (Currently unused in the implementation; retained for API compatibility.)
+        Directory where per-master-MIDI result folders will be created
+        (default './Output-MIDI-Dataset/').
+    max_number_of_top_k_matches : int, optional
+        Number of top matches to retrieve per source feature vector (default 16).
     include_original_midis : bool, optional
-        If True, the original master MIDI file is copied into its output folder (default:
-        True).
-    transpose_factor : int, optional
-        Maximum number of semitone transpositions to consider in each direction when
-        extracting features from the master MIDI (default: 6). The value is clamped to
-        the range [0, 6]. If > 0, the function will iterate transpose values from
-        `-transpose_factor` to `+transpose_factor - 1` (inclusive of negative shifts).
-        If 0, no transposition is applied.
-    top_k : int, optional
-        Number of nearest neighbors to return per query feature-matrix (default: 16).
+        If True, copy the original master MIDI into its output folder (default True).
+    source_midis_transpose_factor : int, optional
+        Maximum semitone transpose range to apply to source/master MIDIs. Value is
+        clamped to [0, 6]. If > 0, the function searches matches for each transpose
+        offset in `range(-transpose_factor, transpose_factor)` (default 6).
     p : float, optional
-        Minkowski distance exponent used by `topk_minkowski_between_gpu` (default: 3.0).
+        Minkowski distance exponent used by the GPU top-k routine (default 3.0).
     chunk_rows : int, optional
-        Row chunk size used by `fast_mean_std_gpu` when computing mean/std on the
-        Discover feature matrices (default: 200000). Increase to reduce overhead when
-        memory allows.
+        Row chunk size used by the mean/std GPU routine to control memory usage
+        (default 200000).
     q_batch_size : int, optional
-        Batch size parameter forwarded to `topk_minkowski_between_gpu` controlling how
-        many query vectors are processed per inner batch (default: 12).
+        Query batch size for the GPU top-k routine (default 12).
     y_chunk_size : int, optional
-        Chunk size for the corpus dimension used by the GPU distance routine (default:
-        8192).
+        Chunk size for the target (database) vectors in the GPU top-k routine
+        (default 8192).
     dim_chunk : int, optional
-        Chunk size for the feature-dimension used by the GPU distance routine (default:
-        961).
+        Dimensional chunking parameter for the GPU top-k routine to limit per-iteration
+        memory (default 961).
     mismatch_threshold : float or None, optional
-        If provided, a threshold used by the distance routine to detect mismatches. If
-        `None`, no thresholding is applied (default: None).
+        Optional threshold used by the distance routine to treat large mismatches
+        specially. If None, no thresholding is applied (default None).
     mismatch_penalty : float, optional
-        Penalty added for mismatches when computing distances (default: 10.0).
+        Penalty value applied when mismatches exceed `mismatch_threshold` (default 10.0).
     alpha : float, optional
-        Scaling factor forwarded to the distance routine (default: 1.0).
+        Scaling factor applied to normalized distances before ranking (default 1.0).
     beta : float, optional
-        Secondary scaling factor forwarded to the distance routine (default: 0.5).
+        Secondary scaling factor used by the distance routine (default 0.5).
     use_fp16 : bool, optional
-        If True, the GPU distance routine may use half-precision (float16) to reduce
-        memory usage and increase throughput (default: True). Use with caution if your
-        GPU or algorithm requires full precision.
+        If True, use FP16 arithmetic where supported to reduce memory and increase
+        throughput (default True).
     device : str, optional
-        Device identifier passed to GPU routines (default: `"cuda"`). Use `"cpu"` to
-        force CPU execution if supported by the underlying helper functions.
+        Device string for computation (e.g., 'cuda' or 'cpu') (default 'cuda').
     use_gpu : bool, optional
-        Whether to attempt GPU-accelerated computation (default: True). If False, the
-        helper functions should fall back to CPU implementations.
+        If True, GPU-accelerated routines are used; otherwise CPU fallbacks are used
+        (default True).
     verbose : bool, optional
-        If True, prints progress messages to stdout (default: True).
+        If True, print progress and diagnostic messages to stdout (default True).
     
     Returns
     -------
     None
-        This function has no return value. Its primary effect is to create directories
-        under `output_dir` and copy matched MIDI files from `discover_dir` into those
-        directories. Each copied file is named with the pattern:
-    
-            <similarity>_<transpose_value>_<original_filename>.mid
-    
-        where `<similarity>` is the rounded score returned by the distance routine and
-        `<transpose_value>` is the transposition index used when extracting features
-        from the master MIDI.
+        Results are written to disk under `output_dir`. For each master MIDI file
+        `X.mid`, a folder `output_dir/X/` is created. Matched files are copied from
+        the Discover dataset into that folder with filenames of the form:
+        `<similarity>_<transpose_offset>_<md5>.mid`. If `include_original_midis` is True,
+        the original master MIDI is also copied into the same folder.
     
     Side effects
     ------------
     - Creates `master_dir` and `output_dir` if they do not exist.
-    - Iterates over all MIDI files returned by `create_files_list([master_dir])`.
-    - Calls the following external helper functions which must be available in the
-      calling module's namespace:
-        - `create_files_list(paths) -> list[str]`
-        - `get_MIDI_features_matrixes(midi_path, transpose_factor) -> sequence`
-        - `fast_mean_std_gpu(array, chunk_rows, device, use_gpu, verbose) -> (mean, std)`
-        - `topk_minkowski_between_gpu(src_fmatrixes, features_matrixes, ...) -> (inds, scores)`
-    - Copies files using `shutil.copy2`. Copy errors are caught and ignored (the code
-      uses a broad `except` around each copy), so missing or malformed paths will not
-      raise but will silently skip that match.
+    - Reads master MIDI files from `master_dir`.
+    - Copies matched MIDI files from `discover_dir` into `output_dir`.
+    - Uses GPU memory and compute when `use_gpu` is True and `device` points to a GPU.
     
-    Notes and implementation details
-    -------------------------------
-    - **Transpose handling**: `transpose_factor` is clamped to [0, 6]. If > 0, the code
-      sets `tsidx = -transpose_factor` and `teidx = transpose_factor` and iterates
-      `range(tsidx, teidx)` when naming copied files. This produces transpose indices
-      in the range `[-transpose_factor, transpose_factor-1]`. If `transpose_factor == 0`
-      the code uses a single index `0`.
-    - **Normalization**: The function computes mean and std of `features_matrixes`
-      using `fast_mean_std_gpu` and passes them to the distance routine. This allows
-      the distance computation to use precomputed normalization statistics.
-    - **Distance computation**: `topk_minkowski_between_gpu` is expected to return two
-      arrays: `inds` (indices of the top-k matches for each query) and `scores`
-      (corresponding similarity/distance scores). The function assumes `inds` and
-      `scores` are indexable and convertible to lists (e.g., numpy arrays).
-    - **File naming and path construction**: The code constructs the source path for
-      each matched MIDI as:
+    Discover dataset layout expectation
+    -----------------------------------
+    Files in the Discover dataset must be sharded by the first two characters of the
+    md5 identifier. For an md5 identifier `md5`, the expected path is:
+    `discover_dir + md5[0] + '/' + md5[1] + '/' + md5 + '.mid'`.
     
-          discover_dir + fn[0] + '/' + fn[1] + '/' + fn
+    Detailed behavior
+    -----------------
+    - `transpose_factor` is clamped to the integer range [0, 6]. If `transpose_factor > 0`,
+      the function iterates transpose offsets `tv` in `range(-transpose_factor, transpose_factor)`;
+      otherwise it uses a single offset 0.
+    - For each master MIDI file:
+      1. Build a list of source feature matrices using `get_MIDI_features_matrixes(midi, transpose_factor=...)`.
+      2. Convert source matrices to `np.int32` and compute mean/std across the union of
+         `features_matrixes` and the source matrices using `fast_mean_std_gpu`.
+      3. Call `topk_minkowski_between_gpu` to compute top-k nearest neighbors and similarity
+         scores between source matrices and `features_matrixes`. The routine accepts
+         `precomputed_mean` and `precomputed_std` to normalize distances.
+      4. Create `output_dir/<master_basename>/` and copy matched MIDI files from the
+         Discover dataset into that folder. Filenames are prefixed with the rounded
+         similarity score and the transpose offset. Duplicate md5 matches for the same
+         master MIDI are suppressed using an internal `seen` set.
     
-      and copies it into `midi_output_dir` with a prefix of the rounded score and
-      transpose index. To avoid surprises, ensure `features_matrixes_file_names`
-      encodes the relative path components in a format compatible with this logic
-      (see the parameter description above). If your discover dataset uses a
-      different layout, adapt the path construction accordingly.
-    - **Error handling**: The inner copy loop wraps each copy in a `try/except` and
-      continues on any exception. This prevents a single missing file from aborting
-      the whole run but also hides the cause of failures. If you need strict error
-      reporting, replace the broad `except` with targeted exception handling and/or
-      logging.
-    - **Performance**: The function is designed for large-scale datasets. Tune
-      `chunk_rows`, `q_batch_size`, `y_chunk_size`, `dim_chunk`, and `use_fp16` to
-      balance memory usage and throughput for your hardware. When `use_gpu` is True
-      and `device` points to a CUDA device, the heavy computations are delegated to
-      GPU-accelerated helper functions.
+    Error handling
+    --------------
+    - Per-file copy and lookup operations are wrapped in try/except. On exception the
+      function logs the error (when `verbose` is True) and continues processing other matches.
+    - The function does not raise for individual copy failures; unhandled exceptions from
+      helper utilities or the environment will propagate.
     
-    Examples
-    --------
-    Basic usage (assumes helper functions and data are prepared):
+    Performance and tuning notes
+    ----------------------------
+    - Designed to scale to large Discover datasets by chunking both the mean/std computation
+      and the top-k search. Tune `chunk_rows`, `y_chunk_size`, `dim_chunk`, and `q_batch_size`
+      to match available GPU memory and desired throughput.
+    - Enabling `use_fp16` reduces memory usage and may increase throughput on supported GPUs,
+      but can reduce numerical precision.
+    - `max_number_of_top_k_matches` increases I/O and disk usage proportionally to the
+      number of matches copied per source vector.
     
-    >>> search_and_filter(
-    ...     features_matrixes=discover_features_array,
-    ...     features_matrixes_file_names=discover_file_keys,
-    ...     discover_dir='/data/Discover-MIDI-Dataset/MIDIs/',
-    ...     master_dir='/data/Master-MIDI-Dataset/',
-    ...     output_dir='/data/Output-MIDI-Dataset/',
-    ...     transpose_factor=3,
-    ...     top_k=8,
-    ...     p=2.0,
-    ...     use_fp16=False,
-    ...     device='cuda:0',
-    ...     verbose=True
-    ... )
+    Dependencies
+    ------------
+    The function relies on helper functions and standard libraries being available:
+    - `create_files_list(paths)` -> list of file paths under `master_dir`.
+    - `get_MIDI_features_matrixes(midi_path, transpose_factor)` -> list/array of feature vectors.
+    - `fast_mean_std_gpu(tuple_of_arrays, chunk_rows, device, use_gpu, verbose)` -> (mean, std).
+    - `topk_minkowski_between_gpu(src, target, top_k, p, q_batch_size, y_chunk_size,
+      dim_chunk, mismatch_threshold, mismatch_penalty, precomputed_mean, precomputed_std,
+      alpha, beta, use_fp16, device, verbose)` -> (indices, scores).
+    Also uses standard libraries: `os`, `shutil`, `numpy as np`.
     
-    Tips
-    ----
-    - Validate that `features_matrixes.shape[0] == len(features_matrixes_file_names)`.
-    - If you observe silent skips of matched files, run a small test with
-      `verbose=True` and inspect the expected source paths to ensure they exist.
-    - If you do not have a GPU or the helper functions do not support GPU, set
-      `use_gpu=False` and `device='cpu'`.
-    - Consider modifying the copy naming scheme if you require a different sort
-      order or filename format.
+    Example
+    -------
+    >>> # features_matrixes: numpy array shape (N, D)
+    >>> # features_matrixes_file_names: list of md5 strings length N
+    >>> search_and_filter(features_matrixes,
+    ...                   features_matrixes_file_names,
+    ...                   discover_dir='./Discover-MIDI-Dataset/MIDIs/',
+    ...                   master_dir='./Master-MIDI-Dataset/',
+    ...                   output_dir='./Output-MIDI-Dataset/',
+    ...                   max_number_of_top_k_matches=8,
+    ...                   source_midis_transpose_factor=3,
+    ...                   device='cuda',
+    ...                   use_gpu=True,
+    ...                   verbose=True)
     
-    See also
-    --------
-    create_files_list, get_MIDI_features_matrixes, fast_mean_std_gpu,
-    topk_minkowski_between_gpu
-    
+    Notes
+    -----
+    - Ensure `discover_dir` is accessible and that there is sufficient disk space in
+      `output_dir` for copied matches.
+    - If you change the Discover dataset sharding or naming convention, update the
+      file lookup logic accordingly.
     """
     
-    transpose_factor = max(0, min(6, transpose_factor))
+    transpose_factor = max(0, min(6, source_midis_transpose_factor))
     
     if transpose_factor > 0:
         tsidx = -transpose_factor
@@ -2615,7 +2671,7 @@ def search_and_filter(features_matrixes,
         inds, scores = topk_minkowski_between_gpu(
             src_fmatrixes,
             features_matrixes,
-            top_k=top_k,
+            top_k=max_number_of_top_k_matches,
             p=p,
             q_batch_size=q_batch_size,
             y_chunk_size=y_chunk_size,
@@ -2641,16 +2697,23 @@ def search_and_filter(features_matrixes,
 
         if include_original_midis:
             shutil.copy2(midi, os.path.join(midi_output_dir, inp_fn))
+
+        seen = set()
             
         for idxs, scos, tv in zip(inds.tolist(), scores.tolist(), range(tsidx, teidx)):
         
             for i, s in zip(idxs, scos):
         
                 try:
-                    fn = features_matrixes_file_names[i] + '.mid'
+                    md5 = features_matrixes_file_names[i]
+                    fn = md5 + '.mid'
                     sim = round(s, 8)
+
+                    if md5 not in seen:
+                        
                 
-                    shutil.copy2(discover_dir + fn[0] + '/' + fn[1] + '/' + fn, midi_output_dir + '/' + str(sim) + '_' + str(tv) + '_' + fn)
+                        shutil.copy2(discover_dir + fn[0] + '/' + fn[1] + '/' + fn, midi_output_dir + '/' + str(sim) + '_' + str(tv) + '_' + fn)
+                        seen.add(md5)
         
                 except Exception as ex:
                     if verbose:
@@ -2672,6 +2735,67 @@ def load_features_matrixes(features_matrixes_path='./Discover-MIDI-Dataset/DATA/
                            features_matrixes_file_names_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes_file_names.pickle',
                            verbose=True
                           ):
+
+    """Load feature matrices and their corresponding file names for the Discover MIDI Dataset.
+    
+    This helper loads two artifacts produced by the dataset preprocessing pipeline:
+    
+    - a NumPy `.npz` archive that must contain an array stored under the key
+      `'features_matrixes'` (the feature matrices for all MIDI files), and
+    - a Python `pickle` file that contains the list (or other sequence) of
+      file names that correspond to the feature matrices.
+    
+    Parameters
+    ----------
+    features_matrixes_path : str, optional
+        Path to the `.npz` archive containing the feature matrices. The archive
+        is expected to include an entry with key `'features_matrixes'`.
+        Default: `'./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz'`.
+    features_matrixes_file_names_path : str, optional
+        Path to the `pickle` file that stores the file names (or identifiers)
+        corresponding to each feature matrix. Default:
+        `'./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes_file_names.pickle'`.
+    verbose : bool, optional
+        If True, print progress messages to stdout. Default: True.
+    
+    Returns
+    -------
+    tuple
+        A 2-tuple `(fmats, fmats_fnames)` where:
+    
+        - **fmats** : `numpy.ndarray` (or object array)
+          The loaded feature matrices. This is the value stored under the
+          `'features_matrixes'` key inside the `.npz` archive. The exact shape
+          and dtype depend on how the matrices were saved (commonly an array
+          of shape `(N, ...)` where `N` is the number of examples).
+        - **fmats_fnames** : list[str] (or sequence)
+          The list (or sequence) of file names / identifiers loaded from the
+          pickle file. The length and ordering are expected to correspond to
+          the first dimension (examples) of `fmats`.
+    
+    Raises
+    ------
+    FileNotFoundError
+        If either `features_matrixes_path` or `features_matrixes_file_names_path`
+        does not exist.
+    KeyError
+        If the `.npz` archive does not contain the `'features_matrixes'` key.
+    pickle.UnpicklingError
+        If the pickle file is corrupted or cannot be unpickled.
+    OSError, IOError
+        For other I/O related errors when reading the files.
+    
+    Notes
+    -----
+    - The function performs no further validation beyond loading the two objects.
+      It is recommended to verify that `len(fmats_fnames) == fmats.shape[0]`
+      (or otherwise check correspondence) before downstream use.
+    - Loading large `.npz` archives may require substantial memory; consider
+      using memory-mapped loading or streaming approaches for very large datasets.
+    - The function uses `numpy.load` to read the `.npz` file and `pickle.load`
+      to read the file names.
+    
+    """
 
     if verbose:
         print('=' * 70)
@@ -2701,6 +2825,69 @@ def read_jsonl(file_name='./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_fil
                max_lines=-1,
                verbose=True
               ):
+    
+    """Read a JSON Lines (jsonl) file and return its records as a list of Python objects.
+    
+    This helper opens a `.jsonl` file (optionally appending a file extension if none
+    is provided), iterates through each line, parses JSON objects, and accumulates
+    them into a list. It supports an optional `max_lines` limit, prints progress
+    when `verbose` is True, and tolerates corrupted lines by skipping them while
+    continuing processing.
+    
+    Parameters
+    ----------
+    file_name : str, optional
+        Path to the jsonl file to read. If the provided path has no extension,
+        `file_ext` is appended. Default:
+        `'./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_files_list'`.
+    file_ext : str, optional
+        Extension to append when `file_name` has no extension. Default: `'.jsonl'`.
+    max_lines : int, optional
+        Maximum number of JSON records to read. If `max_lines` is negative (default),
+        the function reads the entire file. If positive, reading stops after that
+        many successfully parsed records. Default: `-1`.
+    verbose : bool, optional
+        If True, print progress and status messages and enable a `tqdm` progress
+        iterator. If False, suppress progress output. Default: True.
+    
+    Returns
+    -------
+    list
+        A list of parsed JSON objects (typically dictionaries) in the same order
+        they appear in the file. Corrupted lines that fail JSON parsing are skipped
+        and not included in the returned list.
+    
+    Raises
+    ------
+    FileNotFoundError
+        If the resolved `file_name` does not exist when attempting to open it.
+    OSError, IOError
+        For other I/O related errors when opening or reading the file.
+    
+    Behavioral details
+    ------------------
+    - If `file_name` has no extension, `file_ext` is appended before opening.
+    - Each line is parsed with `json.loads`. Lines that raise `json.JSONDecodeError`
+      are skipped; a brief error message is printed when `verbose` is True.
+    - A `KeyboardInterrupt` during iteration is caught: the function prints a
+      stopping message (when `verbose` is True), closes the file, and returns the
+      records parsed up to that point.
+    - The function uses `tqdm` for a progress bar when `verbose` is True; the
+      progress bar is disabled when `verbose` is False.
+    - The function reads the file line-by-line and keeps only the parsed objects in
+      memory; however, the returned list contains all parsed records and may be
+      large depending on the file size.
+    
+    Notes
+    -----
+    - The function assumes UTF-8 (or the system default) encoding when opening the
+      file. If your jsonl uses a different encoding, open the file separately and
+      pass a path adjusted for that encoding or modify the function to accept an
+      `encoding` parameter.
+    - If strict validation or schema enforcement is required, validate each parsed
+      record after reading.
+    
+    """
 
     if verbose:
         print('=' * 70)
@@ -2771,6 +2958,82 @@ def parallel_extract(tar_path: str = './Discover-MIDI-Dataset/Discover-MIDI-Data
                      max_workers: int = 256, 
                      batch_size: int = 16384
                     ):
+
+    """Extract a large tar.gz archive to disk using parallel writes.
+    
+    This helper streams a tar.gz archive and extracts its members to `extract_path`
+    while performing file writes concurrently with a thread pool. It is optimized
+    for very large archives by avoiding loading the entire archive into memory and
+    by batching completed write futures to limit memory growth.
+    
+    Behavior summary
+    - Opens the archive in streaming mode (`tarfile.open(..., mode="r|gz")`) so
+      members are read sequentially from the archive stream.
+    - Creates directories on demand and tracks created directories in `created_dirs`
+      to avoid redundant `os.makedirs` calls.
+    - Skips extraction for files that already exist at the target path.
+    - Reads each file member into memory briefly, then schedules `write_file(data, path)`
+      on a `ThreadPoolExecutor` for concurrent disk writes.
+    - Flushes and waits for a batch of futures once `batch_size` futures are queued,
+      and again at the end of processing to ensure all writes complete.
+    
+    Parameters
+    ----------
+    tar_path : str, optional
+        Path to the tar.gz archive to extract. Default:
+        `'./Discover-MIDI-Dataset/Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz'`.
+    extract_path : str, optional
+        Destination directory where archive members will be extracted. The directory
+        is created if it does not exist. Default: `'./Discover-MIDI-Dataset/'`.
+    max_workers : int, optional
+        Maximum number of worker threads used for concurrent file writes. Higher
+        values increase parallelism but also increase contention and resource use.
+        Choose a value appropriate for your system and storage device. Default: 256.
+    batch_size : int, optional
+        Number of scheduled write futures to accumulate before waiting for them to
+        complete. This limits the number of in-flight futures and the memory used
+        to buffer file contents. Default: 16384.
+    
+    Returns
+    -------
+    None
+        The function performs extraction as a side effect and does not return a
+        value. All scheduled write tasks are awaited before the function returns.
+    
+    Dependencies and requirements
+    - Requires `tarfile`, `os`, `tqdm`, `concurrent.futures.ThreadPoolExecutor`,
+      and a callable `write_file(data: bytes, path: str)` available in scope.
+    - `write_file` must be thread-safe and handle creating parent directories if
+      necessary (the function already creates directories for `member.isdir()` but
+      `write_file` should be robust).
+    
+    Exceptions
+    ----------
+    FileNotFoundError
+        If `tar_path` does not exist.
+    tarfile.ReadError
+        If the archive cannot be read as a tar file or is corrupted.
+    OSError, IOError, PermissionError
+        For I/O errors while reading the archive or writing files to disk.
+    RuntimeError
+        If a worker thread raises an exception during `write_file`, that exception
+        will be propagated when awaiting the future.
+    
+    Notes and recommendations
+    - The archive is opened in streaming mode (`"r|gz"`). This is memory-efficient
+      but means random access to archive members is not possible.
+    - `batch_size` controls memory usage: each scheduled future holds the file's
+      bytes in memory until the future is awaited. Reduce `batch_size` for low-RAM
+      environments.
+    - `max_workers` should be tuned for the target storage medium. Very large
+      values can cause contention and degrade throughput on HDDs or network filesystems.
+    - The function uses a hard-coded `tqdm` progress bar with `total=5439450` and
+      `miniters=100`. If your archive has a different number of members, consider
+      adjusting or removing the `total` argument to avoid misleading progress.
+    - The function skips extraction when a target file already exists. If you need
+      to overwrite existing files, remove the existence check or add an overwrite flag.
+    
+    """
     
     os.makedirs(extract_path, exist_ok=True)
     
@@ -2817,6 +3080,54 @@ def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
                      local_dir='./Discover-MIDI-Dataset/'
                     ):
 
+    """Download the Discover MIDI Dataset archive from the Hugging Face Hub.
+    
+    This helper wraps `huggingface_hub.hf_hub_download` to fetch a dataset file
+    from a specified repository on the Hugging Face Hub and save it to a local
+    directory. It returns the absolute path to the downloaded file (or the
+    cached file path if the file was already present in the local cache).
+    
+    Parameters
+    ----------
+    repo_id : str, optional
+        Identifier of the Hugging Face dataset repository in the form
+        `'namespace/repo_name'`. Default: `'projectlosangeles/Discover-MIDI-Dataset'`.
+    filename : str, optional
+        Name of the file to download from the repository (for example, a tarball
+        or zip archive). Default:
+        `'Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz'`.
+    local_dir : str, optional
+        Local directory where the downloaded file will be stored or cached.
+        The directory will be created by the underlying `hf_hub_download` if
+        necessary. Default: `'./Discover-MIDI-Dataset/'`.
+    
+    Returns
+    -------
+    str
+        Absolute path to the downloaded file on the local filesystem. If the
+        file already exists in the Hugging Face cache, the cached path is
+        returned.
+    
+    Raises
+    ------
+    Exception
+        Propagates exceptions raised by `huggingface_hub.hf_hub_download` (for
+        example network/HTTP errors, repository or filename not found) and
+        standard I/O errors (e.g., `OSError`) that may occur while writing to
+        disk.
+    
+    Notes
+    -----
+    - This function relies on the `huggingface_hub` package and its
+      authentication/caching behavior. If the repository is private, ensure
+      that the environment is configured with appropriate HF credentials.
+    - `hf_hub_download` may return a cached path instead of re-downloading the
+      file if the same file has been previously fetched.
+    - Use this helper when you want a simple, single-call way to obtain the
+      dataset archive and receive its local path for subsequent processing.
+
+    """
+
     result = hf_hub_download(repo_id=repo_id,
                              repo_type='dataset',
                              filename=filename,
@@ -2832,7 +3143,65 @@ def render_midi(input_midi_file,
                 sf2_path='./Discover-MIDI-Dataset/SOUNDFONTS/SGM-v2.01-YamahaGrand-Guit-Bass-v2.7.sf2',
                 verbose=True
                ):
-
+    
+    """Render a MIDI file to a WAV file using a SoundFont and a MIDI renderer.
+    
+    This helper reads a SoundFont (`.sf2`) and a MIDI file, uses the `midirenderer`
+    interface to synthesize audio, and writes the resulting waveform to disk.
+    It is a thin wrapper around `midirenderer.render_wave_from` that handles
+    file I/O, default output naming, and optional progress printing.
+    
+    Parameters
+    ----------
+    input_midi_file : str or pathlib.Path
+        Path to the input MIDI file to render. The file will be read as bytes
+        and passed to the renderer.
+    output_wav_file : str, optional
+        Path where the rendered WAV will be saved. If empty or not provided,
+        the function will create a file next to `input_midi_file` with the same
+        base name and a `.wav` extension (for example, `song.mid` -> `song.wav`).
+        Default: '' (auto-derived from `input_midi_file`).
+    sf2_path : str or pathlib.Path, optional
+        Path to the SoundFont (`.sf2`) file used for synthesis. The file is
+        read as bytes and supplied to the renderer. Default:
+        `'./Discover-MIDI-Dataset/SOUNDFONTS/SGM-v2.01-YamahaGrand-Guit-Bass-v2.7.sf2'`.
+    verbose : bool, optional
+        If True, print simple progress messages to stdout. Default: True.
+    
+    Returns
+    -------
+    str
+        The path to the saved WAV file (the same value as `output_wav_file` after
+        any default naming logic is applied).
+    
+    Raises
+    ------
+    FileNotFoundError
+        If `input_midi_file` or `sf2_path` does not exist when attempting to read.
+    OSError, IOError, PermissionError
+        If there is an error reading the input files or writing the output WAV.
+    ValueError, RuntimeError
+        If `midirenderer.render_wave_from` fails or returns invalid data.
+    TypeError
+        If the renderer returns a non-bytes object or if provided arguments are
+        of incompatible types.
+    
+    Notes
+    -----
+    - This function expects a `midirenderer` object in scope that exposes the
+      method `render_wave_from(sf2_bytes: bytes, midi_bytes: bytes) -> bytes`.
+      The renderer must accept raw bytes for the SoundFont and MIDI and return
+      raw WAV bytes suitable for writing directly to a `.wav` file.
+    - The function reads the entire SoundFont and MIDI into memory before
+      rendering. For very large SoundFonts or constrained environments, ensure
+      sufficient memory is available.
+    - The function writes the returned bytes directly to disk without additional
+      WAV header manipulation; the renderer is expected to return a complete,
+      valid WAV byte stream.
+    - If you need to overwrite existing files, ensure `output_wav_file` points to
+      the desired path; this function will overwrite without prompting.
+    
+    """
     if verbose:
         print('=' * 70)
         print('Rendering MIDI...')

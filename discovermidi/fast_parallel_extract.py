@@ -63,6 +63,77 @@ def fast_parallel_extract(archive_path='./Discover-MIDI-Dataset/Discover-MIDI-Da
                           output_dir='./Discover-MIDI-Dataset/', 
                           pigz_procs=256
                          ):
+
+    """Fast, parallel extraction of a tar.gz archive using `tar` piped through `pigz`.
+    
+    This helper extracts a compressed tar archive to `output_dir` while leveraging
+    `pigz` (parallel gzip) for multi-core decompression. It constructs a `tar`
+    command that uses `pigz -p <n>` as the decompressor and runs it via
+    `subprocess.run`, suppressing command output. The function measures and prints
+    elapsed time and performs basic validation of inputs and environment.
+    
+    Parameters
+    ----------
+    archive_path : str, optional
+        Path to the tar.gz archive to extract. Default:
+        `'./Discover-MIDI-Dataset/Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz'`.
+    output_dir : str, optional
+        Destination directory where archive contents will be extracted. The
+        directory is created if it does not already exist. Default:
+        `'./Discover-MIDI-Dataset/'`.
+    pigz_procs : int, optional
+        Number of parallel `pigz` worker processes to request via `pigz -p`.
+        Higher values increase decompression parallelism but may saturate CPU or
+        I/O. Choose a value appropriate for your machine. Default: `256`.
+    
+    Returns
+    -------
+    None
+        The function performs extraction as a side effect and prints progress and
+        timing information to stdout. It does not return the path or any status.
+    
+    Raises
+    ------
+    FileNotFoundError
+        If `archive_path` does not exist.
+    EnvironmentError
+        If the `pigz` executable is not found in the system `PATH`.
+    OSError, subprocess.CalledProcessError
+        If `tar` or `pigz` fail to run or the subprocess encounters an OS-level
+        error. Note that the current implementation does not explicitly check the
+        subprocess return code; failures may not raise unless the OS reports an
+        error to `subprocess.run`.
+    
+    Notes
+    -----
+    - This implementation is POSIX-oriented: it writes subprocess output to
+      `"/dev/null"`. On non-POSIX systems (for example, Windows) `"/dev/null"` may
+      not exist; use `os.devnull` or adapt the code for cross-platform compatibility.
+    - The function checks for `pigz` using `shutil.which` and raises an
+      `EnvironmentError` if it is not available. Ensure `pigz` is installed and
+      accessible in the PATH before calling this function.
+    - `pigz_procs` should be tuned to the number of available CPU cores and the
+      characteristics of the storage device. Very large values can cause CPU
+      contention and reduce throughput, especially on HDDs or network filesystems.
+    - The `tar` command is constructed as:
+      ```
+      tar -I "pigz -p <pigz_procs>" -xvf <archive_path> -C <output_dir>
+      ```
+      which instructs `tar` to use the specified `pigz` invocation for
+      decompression.
+    - The function suppresses both stdout and stderr of the extraction command by
+      redirecting them to `"/dev/null"`. If you need to debug extraction failures,
+      remove or modify the redirection so output is visible or capture it via
+      `subprocess.run(..., capture_output=True)`.
+    
+    Security
+    --------
+    - The function executes an external command constructed from user-provided
+      paths. Ensure `archive_path` and `output_dir` are trusted and not attacker-
+      controlled to avoid command injection or unexpected behavior. Prefer passing
+      arguments as a list (as done here) and avoid shell=True.
+    
+    """
     
     print('=' * 70)
     print('Extracting...')
