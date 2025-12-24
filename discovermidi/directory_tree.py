@@ -241,6 +241,9 @@ class DisplayTree:
             printErrorTraceback: bool=False
     ) -> None:
         """
+
+        Example usage: DisplayTree().display('./')
+
         :param dirPath: Root Path of Operation. By Default, Refers to the Current Working Directory
         :param stringRep: Boolean Flag for Direct Console Output or a String Return of the Same. By Default, It Gives out Console Output
         :param header: Boolean Flag for Displaying [OS & Directory Path] Info in the Console. Not Applicable if `string_rep=True`

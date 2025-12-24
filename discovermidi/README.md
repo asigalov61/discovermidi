@@ -7,7 +7,7 @@
 
 ### Introduction
 
-#### Bright, fast, and built for discovery — the **Discover MIDI Dataset** is a massive, carefully curated collection of symbolic music designed for music information retrieval (MIR), creative exploration, and training symbolic music AI. It contains **over 6.74M unique, de‑duplicated, and normalized MIDI files**, comprehensive metadata, and GPU‑accelerated search tooling so researchers and creators can find, analyze, and prototype with MIDI at production scale.
+#### Bright, comprehensive, and built for discovery — the **Discover MIDI Dataset** is a massive, carefully curated collection of symbolic music designed for music information retrieval (MIR), creative exploration, and training symbolic music AI. It contains **over 6.74M unique, de‑duplicated, and normalized MIDI files**, comprehensive metadata, and GPU‑accelerated search tooling so researchers and creators can find, analyze, and prototype with MIDI at production scale.
 
 ### Abstract
 
@@ -43,18 +43,56 @@ _The dataset is packaged with clear installation and optional dependency instruc
 ### pip and setuptools
 
 ```sh
-# It is recommended that you upgrade pip and setuptools prior to install for max compatibility
+# It is recommended that you upgrade pip, setuptools, build and wheel prior to install for max compatibility
 !pip install --upgrade pip
-!pip install --upgrade setuptools
+!pip install --upgrade setuptools build wheel
 ```
 
 ### CPU/GPU install
 
-```sh
-# The following command will install Discover MIDI Dataset for fast GPU search
-# Please note that GPU search requires at least 16GB GPU VRAM for full searches at float16 precision
+#### Auto-install with pip
 
+```sh
+# The following command will install Discover MIDI Dataset for fast GPU search only
+# Please note that GPU search requires at least 16GB GPU VRAM for fast full searches
 !pip install -U discovermidi
+
+# Alternativelly, you can use [full] option to install dependencies for all included modules
+!pip install -U discovermidi[full]
+```
+
+#### Manual dependencies installation
+
+```sh
+# Core dependencies for search and filter modules
+!pip install tqdm
+!pip install ipywidgets
+!pip install scikit-learn
+!pip install scipy
+!pip install matplotlib
+!pip install hf-transfer
+!pip install huggingface_hub
+!pip install torch
+!pip install midirenderer
+!pip install mididoctor
+!pip install numpy==1.24.4
+```
+
+```sh
+# Dependencies for midi_loops_extractor modules
+!pip install pretty-midi
+!pip install symusic
+!pip install miditok
+!pip install numba
+```
+
+```sh
+# Dependencies for aux modules
+!pip install networkx
+!pip install cupy-cuda13x
+!pip install einops
+!pip install einx
+!pip install nltk
 ```
 
 ### Optional packages
@@ -63,8 +101,7 @@ _The dataset is packaged with clear installation and optional dependency instruc
 
 ```sh
 # The following command will install packages for fast_parallel_extract module
-# It will allow you to extract (untar) Godzilla MIDI Dataset much faster
-
+# It will allow you to extract (untar) Discover MIDI Dataset much faster
 !sudo apt update -y
 !sudo apt install -y p7zip-full
 !sudo apt install -y pigz
@@ -74,8 +111,7 @@ _The dataset is packaged with clear installation and optional dependency instruc
 
 ```sh
 # The following command will install packages for midi_to_colab_audio module
-# It will allow you to render Godzilla MIDI Dataset MIDIs to audio
-
+# It will allow you to render Discover MIDI Dataset MIDIs to audio
 !sudo apt update -y
 !sudo apt install fluidsynth
 ```
@@ -83,10 +119,14 @@ _The dataset is packaged with clear installation and optional dependency instruc
 #### Packages for midi_loops_extractor codebase
 
 ```sh
-# The following command will install packages for midi_loops_extractor codebase
-# It will allow you to extract loops from Godzilla MIDI Dataset MIDIs
+# The following command will install additional packages for midi_loops_extractor codebase
+# It will allow you to extract loops from Discover MIDI Dataset MIDIs
 # Please see README.md in discovermidi/midi_loops_extractor/ for use instructions
+!pip install -U discovermidi[loops]
+```
 
+```sh
+# Alternativelly, you can install dependencise for loops codebase manually
 !pip install pretty-midi
 !pip install symusic
 !pip install miditok
@@ -99,13 +139,13 @@ _The dataset is packaged with clear installation and optional dependency instruc
 ## Quick-start use example
 
 ```python
-# Import main Godzilla MIDI Dataset module
+# Import main Discover MIDI Dataset module
 import discovermidi
 
-# Download Godzilla MIDI Dataset from Hugging Face repo
+# Download Discover MIDI Dataset from Hugging Face repo
 discovermidi.download_dataset()
 
-# Extract Godzilla MIDI Dataset with built-in function (slow)
+# Extract Discover MIDI Dataset with built-in function (slow)
 discovermidi.parallel_extract()
 
 # Or you can extract much faster if you have installed the optional packages for Fast Parallel Extract module
@@ -118,7 +158,7 @@ features_matrixes, features_matrixes_file_names = discovermidi.load_features_mat
 # Run the search
 # IO dirs will be created on the first run of the following function
 # Do not forget to put your master MIDIs into created Master-MIDI-Dataset folder
-# The full search for each master MIDI takes about 10-20 seconds on a GPU
+# The full search for each master MIDI takes about 10-25 seconds on a GPU
 discovermidi.search_and_filter(features_matrixes, features_matrixes_file_names)
 ```
 
@@ -136,7 +176,7 @@ Discover-MIDI-Dataset/              # Dataset root dir
 │   └── midi_loops_extractor/       # MIDI loops extractor codebase dir
 ├── DATA/                           # Dataset (meta)data dir
 │   ├── Features Counts/            # Features counts for all MIDIs
-│   ├── Features Matrixes/          # Features counts matrixes for all MIDIs
+│   ├── Features Matrixes/          # Pre-computed compressed Features counts matrixes for all MIDIs
 │   ├── Files Lists/                # Files lists by MIDIs types and categories
 │   ├── Genres MIDIs/               # Genres, artists and titles data for all matched MIDIs
 │   ├── Identified MIDIs/           # Comprehensive data for identified MIDIs
@@ -172,7 +212,7 @@ Discover-MIDI-Dataset/              # Dataset root dir
 
 ### Features Matrixes
 
-#### A compressed NumPy array of flattened features matrixes, covering 961 out of 1089 features (without velocities)
+#### A compressed NumPy array of flattened features matrixes, covering 961 out of 1089 features (without velocities features)
 
 ****
 
@@ -237,7 +277,17 @@ Discover-MIDI-Dataset/              # Dataset root dir
 ## Citations
 
 ```bibtex
-@misc{GodzillaMIDIDataset2025,
+@misc{project_los_angeles_2025,
+	author       = { Project Los Angeles },
+	title        = { Discover-MIDI-Dataset },
+	year         = 2025,
+	url          = { https://huggingface.co/datasets/projectlosangeles/Discover-MIDI-Dataset },
+	publisher    = { Hugging Face }
+}
+```
+
+```bibtex
+@misc{DiscoverMIDIDataset2025,
   title        = {Godzilla MIDI Dataset: Enormous, comprehensive, normalized and searchable MIDI dataset for MIR and symbolic music AI purposes},
   author       = {Alex Lev},
   publisher    = {Project Los Angeles / Tegridy Code},

@@ -54,6 +54,7 @@ r'''############################################################################
 #   Critical dependencies
 #
 #   !pip install torch
+#   !pip install matplotlib
 #   !pip install midirenderer
 #   !pip install numpy==1.24.4
 #
@@ -94,6 +95,8 @@ import os, sys, struct, copy
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
+import time
+
 import random
 
 import json
@@ -121,7 +124,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from huggingface_hub import hf_hub_download
 
-from typing import Tuple, Optional, Iterable, Union
+from typing import Tuple, Optional, Iterable, Union, Sequence, List
 
 import tqdm
 
@@ -1929,99 +1932,143 @@ def fix_escore_notes_durations(escore_notes,
 
 ###################################################################################
 
-def get_MIDI_features_matrixes(path_to_MIDI_file,
-                               transpose_factor=6
+def get_midi_features_matrixes(path_to_MIDI_file,
+                               transpose_factor=6,
+                               remove_drums=False
                               ):
 
-    """Compute fixed-size feature matrices from a single MIDI file for the Discover MIDI Dataset.
-    
-    This function converts a MIDI file into one or more compact, fixed-length feature
-    vectors ("matrices") that summarize temporal, rhythmic, pattern, pitch, and chord
-    information extracted from a processed, single-track representation of the score.
-    It applies a sequence of preprocessing steps (single-track conversion, advanced
-    score processing, augmentation, duplicate removal, and duration fixing), optionally
-    generates transposed variants, chordifies the score, and accumulates counts into
-    a 961-dimensional integer vector for each transposition value.
-    
+    """
+    Extract a compact, fixed-size feature histogram matrix from a MIDI file suitable for
+    statistical analysis or machine-learning pipelines.
+
+    The function loads a MIDI file, runs a sequence of preprocessing steps to produce an
+    "enhanced score" (monophonic/annotated note representation), optionally transposes the
+    musical content across a small range, chordifies the score, and then accumulates counts
+    of several event-level features into a single fixed-length vector (matrix) per
+    transposition. The output is a list of these vectors (one per transposition value).
+
     Parameters
     ----------
-    path_to_MIDI_file : str or pathlib.Path
-        Path to the input MIDI file to process. The file is read and converted to a
-        single-track microsecond-resolution score by `midi2single_track_ms_score`.
+    path_to_MIDI_file : str
+        Filesystem path to the MIDI file to process. The function expects a readable MIDI
+        file and will pass it to the project's MIDI parsing helper `midi2single_track_ms_score`.
     transpose_factor : int, optional
-        Maximum absolute semitone transposition applied to non-percussion pitches.
-        The value is clamped to the range [0, 6]. If `transpose_factor == 0`,
-        the function returns a single matrix for the original pitch set. If
-        `transpose_factor > 0`, the function returns matrices for transposition
-        values `tv` in `range(-transpose_factor, transpose_factor)` (i.e., `-n .. n-1`).
-        Default: `6`.
-    
+        Non-negative integer controlling the transposition range. The value is clamped to
+        the interval [0, 6]. If `transpose_factor == 0` the function computes features for
+        the original pitch set only (one matrix). If `transpose_factor > 0` the function
+        iterates `tv` over `range(-transpose_factor, transpose_factor)` (i.e. `-tf .. tf-1`)
+        and produces one matrix per `tv` value, where `tv` is added to non-drum pitch
+        values when computing pitch-related tokens. Default is 6.
+    remove_drums : bool, optional
+        If True, events/chords that are only drum-channel events (channel == 9) are
+        excluded from the feature counts; individual drum events are also skipped when
+        counting non-drum features. If False, drum events are included and are encoded
+        with a dedicated offset in the pitch token space. Default is False.
+
     Returns
     -------
     list[list[int]]
-        A list of integer vectors (Python lists) where each vector has length 961.
-        Each element is a non-negative integer count aggregated from the chordified
-        score. The list order corresponds to the transposition values iterated
-        (ascending `tv` from `-transpose_factor` to `transpose_factor - 1` when
-        `transpose_factor > 0`, otherwise a single element for `tv == 0`).
-    
-    Feature vector layout (index ranges)
-    -----------------------------------
-    - **0 .. 127** : delta-time bins — counts of inter-chord onset time differences
-      clamped to [0, 127]
-    - **128 .. 255** : duration bins — counts of note durations (clamped to [1,127])
-      stored at index `duration + 128`.
-    - **256 .. 383** : pattern bins — counts of pattern identifiers (clamped to [0,128])
-      stored at index `pattern + 256`.
-    - **384 .. 639** : pitch/token bins — counts of pitch tokens (256 slots). For each
-      note event a pitch token index is computed from the MIDI pitch and channel:
-      - For percussion events (`e[3] == 9`) an offset of 128 is added to the pitch
-        token before indexing.
-      - For non-percussion events the current transposition value `tv` is added to
-        the pitch before indexing.
-      The pitch token is clamped to the valid range before being stored at `index + 384`.
-    - **640 .. 960** : chord token bins — counts of chord-type tokens. For chordified
-      chord events with more than one pitch, the chord's pitch-class set (mod 12)
-      is matched against `ALL_CHORDS_SORTED`. If a chord is not present, it is
-      corrected via `check_and_fix_tones_chord` before indexing; the resulting
-      chord token index is stored at `index + 640`. The number of chord tokens is
-      `961 - 640 = 321`.
-    
-    Notes
-    -----
-    - The function relies on the following helper functions and global constants
-      being available in scope: `midi2single_track_ms_score`, `advanced_score_processor`,
-      `augment_enhanced_score_notes`, `remove_duplicate_pitches_from_escore_notes`,
-      `fix_escore_notes_durations`, `chordify_score`, `ALL_CHORDS_SORTED`, and
-      `check_and_fix_tones_chord`.
-    - Preprocessing steps:
-      1. Convert MIDI to a single-track microsecond score.
-      2. Run advanced score processing and request enhanced note structures.
-      3. Augment enhanced notes (timings divided by 32).
-      4. Remove duplicate pitches from enhanced notes.
-      5. Fix note durations with `min_notes_gap=0`.
-    - The function clamps numeric values (durations, patterns, pitch tokens, delta
-      times) to avoid out-of-range indices.
-    - Returned matrices are Python lists of integers; convert to `numpy` arrays if
-      needed for downstream numeric processing.
-    - Memory and performance: the function processes the entire score in memory;
-      for extremely large or pathological MIDI files, consider pre-filtering or
-      streaming approaches.
-    
-    Errors and exceptions
-    ---------------------
-    - File-related errors (e.g., `FileNotFoundError`, `OSError`) may be raised by
-      `midi2single_track_ms_score` or underlying file I/O.
-    - If any of the helper functions raise exceptions (parsing, validation, or
-      indexing errors), those exceptions will propagate to the caller.
-    
+        A list of integer vectors (lists) where each vector has length 961. Each vector is
+        a histogram of feature-token counts collected from the chordified score for one
+        transposition value. The number of returned vectors equals:
+        - 1 when `transpose_factor == 0`
+        - `2 * transpose_factor` when `transpose_factor > 0` (because range is
+          `-tf .. tf-1`).
+
+    Matrix layout (index ranges and meaning)
+    ----------------------------------------
+    The returned vector has 961 positions (indices 0..960). Each index bucket counts
+    occurrences of a particular discrete feature value. The mapping is:
+
+    - Indices **0 .. 127** : **delta-time** between consecutive chords (clamped to [0,127]).
+      Each chord increments `matrix[dtime]` where `dtime = clamp(c[0][1] - prev_c[0][1], 0, 127)`.
+
+    - Indices **128 .. 255** : **note/event durations** (clamped to [1,127]) stored at
+      `matrix[duration + 128]`. Duration values are clamped and a minimum of 1 is used.
+
+    - Indices **256 .. 383** : **pattern / articulation token** (field `e[6]`), clamped
+      to [0,128] and stored at `matrix[pattern + 256]`.
+
+    - Indices **384 .. 639** : **pitch tokens** (clamped to [1,127] then offset).
+      For each event `e`:
+        - `ptc = clamp(e[4], 1, 127)`
+        - If the event is a drum (channel == 9) then `ptc += 128` (separates drums).
+        - Else `ptc += tv` (applies current transposition value).
+      The final index is `matrix[ptc + 384]`.
+
+    - Indices **640 .. 960** : **chord-type tokens**. When a chord contains more than one
+      non-drum pitch, the chord's pitch classes (mod 12) are computed, normalized and
+      matched against the global `ALL_CHORDS_SORTED` list. The index used is
+      `matrix[chord_token_index + 640]`. The number of chord tokens equals `961 - 640 = 321`
+      (the code assumes `ALL_CHORDS_SORTED` covers this token space). If a chord's pitch
+      class set is not present in `ALL_CHORDS_SORTED`, `check_and_fix_tones_chord` is
+      called to attempt a correction before lookup.
+
+    Notes and behavior details
+    --------------------------
+    - Preprocessing pipeline: the function calls the following helpers in order and
+      expects them to be available in the environment:
+        `midi2single_track_ms_score`,
+        `advanced_score_processor(return_enhanced_score_notes=True)`,
+        `augment_enhanced_score_notes(..., timings_divider=32)`,
+        `remove_duplicate_pitches_from_escore_notes`,
+        `fix_escore_notes_durations(..., min_notes_gap=0)`,
+        `chordify_score`.
+      These helpers must return data in the expected enhanced-score/event formats used
+      by the rest of the function (see project codebase for exact data structures).
+    - The function clamps numeric fields to avoid out-of-range indices (all clamps shown
+      above). Durations are clamped to a minimum of 1 when stored in the duration bucket.
+    - Drum handling: drums are identified by `e[3] == 9`. When `remove_drums` is True,
+      chords composed entirely of drum events are skipped and individual drum events are
+      not counted in duration/pattern/pitch buckets. When `remove_drums` is False, drum
+      pitches are encoded into the pitch token space by adding 128 to the pitch before
+      offsetting into the 384..639 range.
+    - Transposition iteration: `transpose_factor` is clamped to [0,6]. If > 0 the loop
+      iterates `tv` in `range(-transpose_factor, transpose_factor)` producing multiple
+      matrices; otherwise only `tv == 0` is used.
+    - The function uses `ALL_CHORDS_SORTED` and `check_and_fix_tones_chord` to map chord
+      pitch-class sets to chord token indices; these must be defined and consistent with
+      the expected token count (321 tokens starting at index 640).
+
+    Return value properties
+    -----------------------
+    - Each returned vector is a histogram of counts (non-negative integers).
+    - The vectors are deterministic given the same preprocessing helpers and MIDI input.
+    - If the input score contains no chords/events (or all chords are skipped due to
+      `remove_drums`), the function still returns the expected number of vectors, each
+      initialized to zeros (length 961).
+
+    Complexity
+    ----------
+    Let E be the number of events and C the number of chord groups after chordification.
+    The function iterates over chords and events once per transposition value, so time
+    complexity is approximately O(T * (C + E)) where T is the number of transposition
+    steps (1 or `2 * transpose_factor`). Memory complexity is O(T * 961) for the output.
+
+    Exceptions and edge cases
+    -------------------------
+    - The function does not itself raise specialized exceptions for malformed MIDI; errors
+      will propagate from the underlying helper functions (e.g., file I/O or parsing
+      errors from `midi2single_track_ms_score`).
+    - If `ALL_CHORDS_SORTED.index(...)` fails after `check_and_fix_tones_chord`, a
+      `ValueError` will propagate; ensure `ALL_CHORDS_SORTED` and the fixer function are
+      consistent with the project's chord vocabulary.
+
+    Example
+    -------
+    >>> matrices = get_midi_features_matrixes("path/to/file.mid", transpose_factor=2, remove_drums=True)
+    >>> len(matrices)
+    4  # transpose_factor=2 -> tv in [-2, -1, 0, 1]
+    >>> len(matrices[0])
+    961
+
     """
 
-    raw_score = midi2single_track_ms_score(path_to_MIDI_file)
-    
-    escore = advanced_score_processor(raw_score, return_enhanced_score_notes=True)[0]
-    
-    escore = augment_enhanced_score_notes(escore, timings_divider=32)
+    raw_score = midi2single_track_ms_score(path_to_MIDI_file, do_not_check_MIDI_signature=True)
+
+    escore = advanced_score_processor(raw_score, return_enhanced_score_notes=True)
+
+    escore = augment_enhanced_score_notes(escore[0], timings_divider=32)
     
     escore = remove_duplicate_pitches_from_escore_notes(escore)
 
@@ -2050,10 +2097,18 @@ def get_MIDI_features_matrixes(path_to_MIDI_file,
 
         for c in cscore:
 
+            if remove_drums:
+                if all(True if e[3] == 9 else False for e in c):
+                    continue
+
             dtime = max(0, min(127, c[0][1]-pc[0][1]))
             matrix[dtime] += 1
 
             for e in c:
+
+                if remove_drums:
+                    if e[3] == 9:
+                        continue
 
                 dur = max(1, min(127, e[2]))
                 matrix[dur+128] += 1
@@ -2083,7 +2138,7 @@ def get_MIDI_features_matrixes(path_to_MIDI_file,
                 matrix[chord_tok+640] += 1
 
             pc = c
-            
+
         src_matrixes.append(matrix)
         
     return src_matrixes
@@ -2429,14 +2484,27 @@ def topk_minkowski_between_gpu(
 
 ###################################################################################
 
+def format_hms(seconds):
+    
+    """Convert seconds → H:MM:SS."""
+    
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    
+    return f"{hours}h {minutes:02d}m {secs:02d}s"
+
+###################################################################################
+
 def search_and_filter(features_matrixes,
                       features_matrixes_file_names,
                       discover_dir='./Discover-MIDI-Dataset/MIDIs/',
                       master_dir='./Master-MIDI-Dataset/',
                       output_dir='./Output-MIDI-Dataset/',
                       max_number_of_top_k_matches=16,
-                      include_original_midis=True,
-                      source_midis_transpose_factor=6,
+                      include_master_midis=True,
+                      master_midis_transpose_factor=6,
+                      remove_drums_from_master_midis=False,
                       p=3.0,
                       chunk_rows=200000,
                       q_batch_size=12,
@@ -2446,7 +2514,7 @@ def search_and_filter(features_matrixes,
                       mismatch_penalty=10.0,
                       alpha=1.0,
                       beta=0.5,
-                      use_fp16=True,
+                      use_fp16=False,
                       device="cuda",
                       use_gpu=True,
                       verbose=True
@@ -2495,12 +2563,15 @@ def search_and_filter(features_matrixes,
         (default './Output-MIDI-Dataset/').
     max_number_of_top_k_matches : int, optional
         Number of top matches to retrieve per source feature vector (default 16).
-    include_original_midis : bool, optional
+    include_master_midis : bool, optional
         If True, copy the original master MIDI into its output folder (default True).
-    source_midis_transpose_factor : int, optional
-        Maximum semitone transpose range to apply to source/master MIDIs. Value is
+    master_midis_transpose_factor : int, optional
+        Maximum semitone transpose range to apply to master MIDIs. Value is
         clamped to [0, 6]. If > 0, the function searches matches for each transpose
         offset in `range(-transpose_factor, transpose_factor)` (default 6).
+    remove_drums_from_master_midis : bool, optional
+        Remove drums from master MIDIs before search. This is useful when drums
+        are not important in expected results.
     p : float, optional
         Minkowski distance exponent used by the GPU top-k routine (default 3.0).
     chunk_rows : int, optional
@@ -2525,7 +2596,7 @@ def search_and_filter(features_matrixes,
         Secondary scaling factor used by the distance routine (default 0.5).
     use_fp16 : bool, optional
         If True, use FP16 arithmetic where supported to reduce memory and increase
-        throughput (default True).
+        throughput (default False).
     device : str, optional
         Device string for computation (e.g., 'cuda' or 'cpu') (default 'cuda').
     use_gpu : bool, optional
@@ -2562,7 +2633,7 @@ def search_and_filter(features_matrixes,
       the function iterates transpose offsets `tv` in `range(-transpose_factor, transpose_factor)`;
       otherwise it uses a single offset 0.
     - For each master MIDI file:
-      1. Build a list of source feature matrices using `get_MIDI_features_matrixes(midi, transpose_factor=...)`.
+      1. Build a list of source feature matrices using `get_midi_features_matrixes(midi, transpose_factor=...)`.
       2. Convert source matrices to `np.int32` and compute mean/std across the union of
          `features_matrixes` and the source matrices using `fast_mean_std_gpu`.
       3. Call `topk_minkowski_between_gpu` to compute top-k nearest neighbors and similarity
@@ -2594,7 +2665,7 @@ def search_and_filter(features_matrixes,
     ------------
     The function relies on helper functions and standard libraries being available:
     - `create_files_list(paths)` -> list of file paths under `master_dir`.
-    - `get_MIDI_features_matrixes(midi_path, transpose_factor)` -> list/array of feature vectors.
+    - `get_midi_features_matrixes(midi_path, transpose_factor)` -> list/array of feature vectors.
     - `fast_mean_std_gpu(tuple_of_arrays, chunk_rows, device, use_gpu, verbose)` -> (mean, std).
     - `topk_minkowski_between_gpu(src, target, top_k, p, q_batch_size, y_chunk_size,
       dim_chunk, mismatch_threshold, mismatch_penalty, precomputed_mean, precomputed_std,
@@ -2611,7 +2682,7 @@ def search_and_filter(features_matrixes,
     ...                   master_dir='./Master-MIDI-Dataset/',
     ...                   output_dir='./Output-MIDI-Dataset/',
     ...                   max_number_of_top_k_matches=8,
-    ...                   source_midis_transpose_factor=3,
+    ...                   master_midis_transpose_factor=3,
     ...                   device='cuda',
     ...                   use_gpu=True,
     ...                   verbose=True)
@@ -2624,7 +2695,12 @@ def search_and_filter(features_matrixes,
       file lookup logic accordingly.
     """
     
-    transpose_factor = max(0, min(6, source_midis_transpose_factor))
+    if verbose:
+        print("=" * 70)
+        print('Discover MIDI Dataset Search and Filter')
+        print("=" * 70)
+
+    transpose_factor = max(0, min(6, master_midis_transpose_factor))
     
     if transpose_factor > 0:
         tsidx = -transpose_factor
@@ -2638,8 +2714,15 @@ def search_and_filter(features_matrixes,
     
     os.makedirs(master_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
+    
+    warmup = 5
+    total = len(master_midis)
+    start_time = time.time()
+    durations = []
    
     for fnum, midi in enumerate(master_midis):
+
+        iter_start = time.time()
         
         inp_fn = os.path.basename(midi)
 
@@ -2649,8 +2732,9 @@ def search_and_filter(features_matrixes,
             print("MIDI file name:", inp_fn)
             print("=" * 70)
     
-        src_fmatrixes = get_MIDI_features_matrixes(midi,
-                                                   transpose_factor=transpose_factor
+        src_fmatrixes = get_midi_features_matrixes(midi,
+                                                   transpose_factor=transpose_factor,
+                                                   remove_drums=remove_drums_from_master_midis
                                                   )
 
         src_fmatrixes = np.array(src_fmatrixes, dtype=np.int32)
@@ -2695,7 +2779,7 @@ def search_and_filter(features_matrixes,
         midi_output_dir = os.path.join(output_dir, out_dir)
         os.makedirs(midi_output_dir, exist_ok=True)
 
-        if include_original_midis:
+        if include_master_midis:
             shutil.copy2(midi, os.path.join(midi_output_dir, inp_fn))
 
         seen = set()
@@ -2707,11 +2791,10 @@ def search_and_filter(features_matrixes,
                 try:
                     md5 = features_matrixes_file_names[i]
                     fn = md5 + '.mid'
-                    sim = round(s, 8)
+                    sim = round(s * 100, 8)
 
                     if md5 not in seen:
-                        
-                
+
                         shutil.copy2(discover_dir + fn[0] + '/' + fn[1] + '/' + fn, midi_output_dir + '/' + str(sim) + '_' + str(tv) + '_' + fn)
                         seen.add(md5)
         
@@ -2723,7 +2806,33 @@ def search_and_filter(features_matrixes,
                         print('File name:', fn)
                         
                         continue
-                    
+        if verbose:
+            print('=' * 70)
+
+        iter_end = time.time()
+        
+        if fnum < warmup:
+            durations.append(iter_end - iter_start)
+            
+        if fnum == warmup - 1:
+            avg_time = sum(durations) / len(durations)
+            remaining = total - warmup
+            eta_seconds = remaining * avg_time
+    
+        elapsed = time.time() - start_time
+        
+        if fnum < warmup:
+
+            if verbose:
+                print(f"Elapsed time: {format_hms(elapsed)} (warming up ETA...)")
+        
+        else:
+            remaining = total - (fnum + 1)
+            eta = remaining * avg_time
+            
+            if verbose:
+                print(f"Elapsed time: {format_hms(elapsed)}, ETA: {format_hms(eta)}")
+
     if verbose:    
         print("=" * 70)
         print("Done!")
@@ -2731,70 +2840,163 @@ def search_and_filter(features_matrixes,
     
 ###################################################################################
 
-def load_features_matrixes(features_matrixes_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz',
-                           features_matrixes_file_names_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes_file_names.pickle',
+def align_feature_vectors(
+    src_fnames: Sequence[str],
+    trg_fnames: Sequence[str],
+    feat_vectors: np.ndarray,
+    verbose: bool = True,
+    ) -> Tuple[np.ndarray, List[str], List[str]]:
+    
+    """
+    Align feat_vectors (rows correspond to src_fnames) to the order of trg_fnames.
+
+    Returns:
+      - aligned_feat_vectors: np.ndarray with rows ordered to match aligned_fnames.
+      - aligned_fnames: list of filenames from trg_fnames that were found in src_fnames,
+                        in the same order as aligned_feat_vectors.
+      - missing_fnames: list of filenames from trg_fnames that were not found in src_fnames.
+
+    Behavior:
+      - If a filename appears multiple times in src_fnames, the last occurrence is used.
+      - If no trg_fnames match, aligned_feat_vectors has shape (0, D) where D is feature dim.
+    """
+    
+    # Validate feat_vectors
+    if not isinstance(feat_vectors, np.ndarray) or feat_vectors.ndim != 2:
+        raise ValueError("feat_vectors must be a 2D numpy array")
+
+    if len(src_fnames) != feat_vectors.shape[0]:
+        raise ValueError("Length of src_fnames must equal number of rows in feat_vectors")
+
+    # Build mapping from filename -> last index in src_fnames
+    fname_to_idx = {}
+    for i, fn in enumerate(src_fnames):
+        fname_to_idx[fn] = i
+
+    # Optional duplicate warning
+    if verbose and len(set(src_fnames)) != len(src_fnames):
+        dup_count = len(src_fnames) - len(set(src_fnames))
+        print(f"Warning: {dup_count} duplicate(s) found in src_fnames; using last occurrence for each.")
+
+    aligned_indices: List[int] = []
+    aligned_fnames: List[str] = []
+    missing_fnames: List[str] = []
+
+    iterator = trg_fnames
+    iterator = tqdm.tqdm(trg_fnames, desc="Aligning", unit="file", disable=not verbose)
+
+    for fn in iterator:
+        idx = fname_to_idx.get(fn)
+        if idx is None:
+            missing_fnames.append(fn)
+            if verbose and not show_progress:
+                print(f"Skipped (not found): {fn}")
+        else:
+            aligned_indices.append(idx)
+            aligned_fnames.append(fn)
+
+    if verbose:
+        print(f"Targets processed: {len(trg_fnames)}; Matched: {len(aligned_indices)}; Missing: {len(missing_fnames)}")
+
+    # If no matches, return empty array with correct feature dimension
+    if len(aligned_indices) == 0:
+        D = feat_vectors.shape[1]
+        empty = np.zeros((0, D), dtype=feat_vectors.dtype)
+        return empty, [], missing_fnames
+
+    # Gather rows in requested order
+    aligned_feat_vectors = feat_vectors[np.array(aligned_indices, dtype=int), :]
+
+    return aligned_feat_vectors, aligned_fnames, missing_fnames
+
+###################################################################################
+
+def load_features_matrixes(all_midis_files_list_path='./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_files_list.jsonl',
+                           custom_midis_files_list_path='',
+                           features_matrixes_path='./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz',
                            verbose=True
                           ):
 
-    """Load feature matrices and their corresponding file names for the Discover MIDI Dataset.
-    
-    This helper loads two artifacts produced by the dataset preprocessing pipeline:
-    
-    - a NumPy `.npz` archive that must contain an array stored under the key
-      `'features_matrixes'` (the feature matrices for all MIDI files), and
-    - a Python `pickle` file that contains the list (or other sequence) of
-      file names that correspond to the feature matrices.
-    
+    """
+    Load feature matrices and their corresponding file identifiers, optionally
+    reordering the matrices to match a custom file list.
+
+    This function loads a NumPy `.npz` archive expected to contain an array
+    under the key `'features_matrixes'` (shape `(N, D)` where `N` is the number
+    of items and `D` is the feature dimensionality). It also reads a JSONL file
+    that lists all MIDI files (default `all_midis_files_list_path`) and extracts
+    the file identifiers (the `'md5'` field) to produce a parallel list of
+    filenames for the loaded feature rows. Optionally, a second JSONL file
+    (`custom_midis_files_list_path`) can be provided; when present the function
+    aligns and reorders the loaded feature rows so they match the order of the
+    custom list. Alignment uses `align_feature_vectors` which matches by filename
+    and returns only the rows that were found in the original features array.
+
     Parameters
     ----------
+    all_midis_files_list_path : str, optional
+        Path to the JSON Lines file that enumerates the full set of MIDI files
+        corresponding to the stored feature matrices. Each line must be a JSON
+        object containing an `'md5'` key (used as the filename/identifier).
+        Default: `'./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_files_list.jsonl'`.
+    custom_midis_files_list_path : str, optional
+        Optional path to a JSONL file (same format as above) that defines a
+        custom ordering and/or subset of files. When provided, the returned
+        feature matrix and filename list are reordered to match this custom
+        list; files present in the custom list but missing from the loaded
+        features are reported and omitted from the returned matrix. Default: ''.
     features_matrixes_path : str, optional
         Path to the `.npz` archive containing the feature matrices. The archive
-        is expected to include an entry with key `'features_matrixes'`.
-        Default: `'./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz'`.
-    features_matrixes_file_names_path : str, optional
-        Path to the `pickle` file that stores the file names (or identifiers)
-        corresponding to each feature matrix. Default:
-        `'./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes_file_names.pickle'`.
+        must contain an array under the key `'features_matrixes'`. Default:
+        `'./Discover-MIDI-Dataset/DATA/Features Matrixes/features_matrixes.npz'`.
     verbose : bool, optional
-        If True, print progress messages to stdout. Default: True.
-    
+        If True, print progress and status messages. If False, suppress printing.
+        Default: True.
+
     Returns
     -------
     tuple
-        A 2-tuple `(fmats, fmats_fnames)` where:
-    
-        - **fmats** : `numpy.ndarray` (or object array)
-          The loaded feature matrices. This is the value stored under the
-          `'features_matrixes'` key inside the `.npz` archive. The exact shape
-          and dtype depend on how the matrices were saved (commonly an array
-          of shape `(N, ...)` where `N` is the number of examples).
-        - **fmats_fnames** : list[str] (or sequence)
-          The list (or sequence) of file names / identifiers loaded from the
-          pickle file. The length and ordering are expected to correspond to
-          the first dimension (examples) of `fmats`.
-    
-    Raises
-    ------
+        A tuple `(fmats, fmats_fnames)` where:
+        - **fmats** (`np.ndarray`) — 2D array of feature vectors. If a custom
+          list is provided, `fmats` contains only the rows that matched the
+          custom list and is ordered to match `fmats_fnames`. If no matches
+          exist for the custom list, `fmats` will have shape `(0, D)` where `D`
+          is the original feature dimensionality.
+        - **fmats_fnames** (`List[str]`) — list of file identifiers (the `'md5'`
+          values) corresponding to the rows of `fmats`, in the same order.
+
+    Behavior and notes
+    ------------------
+    - The function expects the `.npz` file to contain the key `'features_matrixes'`.
+      If that key is missing, NumPy will raise a `KeyError` when indexing the
+      loaded archive.
+    - The JSONL readers expect each line to be a JSON object with an `'md5'`
+      field. The helper `read_jsonl` is used to parse these files.
+    - When `custom_midis_files_list_path` is provided:
+        * Only filenames present in both the loaded feature list and the custom
+          list are returned (in the order of the custom list).
+        * Filenames present in the custom list but not in the loaded features
+          are omitted from `fmats` and collected as "missing" by the alignment
+          helper (these missing names are not returned by this function but are
+          printed by the alignment helper when `verbose` is True).
+        * If `src_fnames` (from the `.jsonl` that accompanies the `.npz`) contain
+          duplicates, the alignment uses the last occurrence for each filename.
+    - The function prints progress/status messages when `verbose` is True.
+    - Memory: the entire `'features_matrixes'` array is loaded into memory by
+      `np.load(...)` before any optional reordering. If the array is large,
+      ensure sufficient memory is available.
+
+    Exceptions
+    ----------
     FileNotFoundError
-        If either `features_matrixes_path` or `features_matrixes_file_names_path`
-        does not exist.
+        Raised if `features_matrixes_path` or either JSONL path (when provided)
+        does not exist or cannot be opened.
     KeyError
-        If the `.npz` archive does not contain the `'features_matrixes'` key.
-    pickle.UnpicklingError
-        If the pickle file is corrupted or cannot be unpickled.
-    OSError, IOError
-        For other I/O related errors when reading the files.
-    
-    Notes
-    -----
-    - The function performs no further validation beyond loading the two objects.
-      It is recommended to verify that `len(fmats_fnames) == fmats.shape[0]`
-      (or otherwise check correspondence) before downstream use.
-    - Loading large `.npz` archives may require substantial memory; consider
-      using memory-mapped loading or streaming approaches for very large datasets.
-    - The function uses `numpy.load` to read the `.npz` file and `pickle.load`
-      to read the file names.
-    
+        If the `.npz` archive does not contain the expected `'features_matrixes'`
+        key.
+    ValueError, OSError, IOError
+        Propagated from underlying I/O or parsing functions (e.g., malformed
+        JSONL lines, invalid array shapes, or other file I/O errors).
     """
 
     if verbose:
@@ -2809,12 +3011,23 @@ def load_features_matrixes(features_matrixes_path='./Discover-MIDI-Dataset/DATA/
     
         print('Loading features matrixes files names...')
 
-    with open(features_matrixes_file_names_path, 'rb') as f:
-        fmats_fnames = pickle.load(f)
+    all_midis_flist = read_jsonl(all_midis_files_list_path, verbose=verbose)
+    fmats_fnames = [d['md5'] for d in all_midis_flist]
+
+    if custom_midis_files_list_path:
+        if verbose:
+            print('Aligning features matrixes to a custom files list...')
+            
+        custom_midis_flist = read_jsonl(custom_midis_files_list_path, verbose=verbose)
+        custom_fnames = [d['md5'] for d in custom_midis_flist]
+        res = align_feature_vectors(fmats_fnames, custom_fnames, fmats, verbose=verbose)
+        fmats = res[0]
+        fmats_fnames = res[1]
         
-    if verbose:
-        print('Done!')
-        print('=' * 70)
+        if verbose:
+            print('=' * 70)
+            print('Done!')
+            print('=' * 70)
 
     return fmats, fmats_fnames
 
@@ -2941,6 +3154,106 @@ def read_jsonl(file_name='./Discover-MIDI-Dataset/DATA/Files Lists/all_midis_fil
         print('=' * 70)
 
     return records
+
+###################################################################################
+
+def write_jsonl(records_dicts_list, 
+                file_name='data', 
+                file_ext='.jsonl', 
+                file_mode='w', 
+                line_sep='\n', 
+                verbose=True
+               ):
+    
+    """
+    Write a sequence of Python dictionaries (or other JSON-serializable objects)
+    to a newline-delimited JSON file (JSONL).
+
+    Each item in `records_dicts_list` is serialized with `json.dumps` and written
+    as a single line followed by `line_sep`. The function prints progress and
+    summary messages when `verbose` is True and shows a tqdm progress bar while
+    writing.
+
+    Parameters
+    ----------
+    records_dicts_list : Iterable[dict] or Iterable[Any]
+        An iterable of records to write. Each record must be JSON-serializable
+        by the standard `json` module (for example: dict, list, str, int, float,
+        bool, None). The function iterates over this iterable once.
+    file_name : str, optional
+        Target file path or base name. If `file_name` has no extension, `file_ext`
+        is appended. Defaults to `'data'`.
+    file_ext : str, optional
+        Extension to append to `file_name` when it has no extension. Defaults to
+        `'.jsonl'`.
+    file_mode : str, optional
+        Mode used to open the file (passed to `open`). Typical values:
+        `'w'` (overwrite), `'a'` (append), `'x'` (create exclusive). Defaults to
+        `'w'`.
+    line_sep : str, optional
+        Line separator appended after each JSON record. Defaults to newline
+        `'\n'`. Use `''` to avoid adding an extra separator if records already
+        include one.
+    verbose : bool, optional
+        If True, print header/footer messages and enable the tqdm progress bar.
+        If False, suppress console output and disable the progress bar. Defaults
+        to True.
+
+    Returns
+    -------
+    None
+        This function writes to disk and does not return a value.
+
+    Raises
+    ------
+    TypeError
+        If a record is not JSON-serializable, `json.dumps` will raise a
+        `TypeError` (or `TypeError`/`ValueError` depending on the object).
+    OSError
+        If the file cannot be opened or written to (permission issues, invalid
+        path, disk full, etc.), the underlying I/O call will raise an `OSError`
+        (or a subclass such as `FileNotFoundError`).
+    Exception
+        Any exception raised by `json.dumps` or the file I/O will propagate to
+        the caller.
+
+    Notes
+    -----
+    - The function uses `os.path.splitext` to detect whether `file_name`
+      already contains an extension; if not, `file_ext` is appended.
+    - A `tqdm` progress bar is used to show progress when `verbose` is True.
+      Ensure `tqdm` is available in the environment or import it as `tqdm`.
+    - The function opens the file using a context manager (`with open(...)`)
+      which ensures the file is closed on normal exit or when an exception is
+      raised. (The explicit `f.close()` after the `with` block is redundant but
+      harmless.)
+    - Each record is written as a single JSON object per line. This format is
+      compatible with many tools that consume JSONL/NDJSON.
+    """
+
+    if verbose:
+        print('=' * 70)
+        print('Writing', len(records_dicts_list), 'records to jsonl file...')
+        print('=' * 70)
+
+    if not os.path.splitext(file_name)[1]:
+        file_name += file_ext
+
+    l_count = 0
+
+    with open(file_name, mode=file_mode) as f:
+        for record in tqdm.tqdm(records_dicts_list, disable=not verbose):
+            f.write(json.dumps(record) + line_sep)
+            l_count += 1
+
+    f.close()
+
+    if verbose:
+        print('=' * 70)
+        print('Written total of', l_count, 'jsonl records.')
+        print('=' * 70)
+        print('Done!')
+        print('=' * 70)
 
 ###################################################################################
 
@@ -3077,7 +3390,8 @@ def parallel_extract(tar_path: str = './Discover-MIDI-Dataset/Discover-MIDI-Data
 
 def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
                      filename='Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
-                     local_dir='./Discover-MIDI-Dataset/'
+                     local_dir='./Discover-MIDI-Dataset/',
+                     verbose=True
                     ):
 
     """Download the Discover MIDI Dataset archive from the Hugging Face Hub.
@@ -3128,12 +3442,20 @@ def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
 
     """
 
+    print('=' * 70)
+    print('Downloading dataset...')
+    print('=' * 70)
+
     result = hf_hub_download(repo_id=repo_id,
                              repo_type='dataset',
                              filename=filename,
                              local_dir=local_dir
                             )
-
+    
+    print('=' * 70)
+    print('Done!')
+    print('=' * 70)
+    
     return result
 
 ###################################################################################
