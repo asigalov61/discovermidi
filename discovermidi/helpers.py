@@ -52,9 +52,9 @@ def get_normalized_midi_md5_hash(midi_file):
     
     old_md5 = hashlib.md5(midi_data).hexdigest()
     
-    score = TMIDIX.midi2score(midi_data, do_not_check_MIDI_signature=True)
+    score = midi2score(midi_data, do_not_check_MIDI_signature=True)
         
-    norm_midi = TMIDIX.score2midi(score)
+    norm_midi = score2midi(score)
     
     new_md5 = hashlib.md5(norm_midi).hexdigest()
     
@@ -86,9 +86,9 @@ def normalize_midi_file(midi_file, output_dir='', output_file_name=''):
     
     midi_data = open(midi_file, 'rb').read()
     
-    score = TMIDIX.midi2score(midi_data, do_not_check_MIDI_signature=True)
+    score = midi2score(midi_data, do_not_check_MIDI_signature=True)
         
-    norm_midi = TMIDIX.score2midi(score)
+    norm_midi = score2midi(score)
 
     with open(midi_path, 'wb') as fi:
         fi.write(norm_midi)

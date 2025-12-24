@@ -53,15 +53,18 @@ r'''############################################################################
 #
 #   Critical dependencies
 #
-#   !pip install torch
-#   !pip install matplotlib
-#   !pip install midirenderer
-#   !pip install numpy==1.24.4
-#
 #   !pip install huggingface_hub
 #   !pip install hf-transfer
 #   !pip install ipywidgets
 #   !pip install tqdm
+#
+#   !pip install torch
+#   !pip install scikit-learn
+#   !pip install scipy
+#   !pip install matplotlib
+#   !pip install midirenderer
+#   !pip install mididoctor
+#   !pip install numpy==1.24.4
 #
 ###################################################################################
 ###################################################################################
@@ -87,6 +90,8 @@ r'''############################################################################
 print('=' * 70)
 print('Loading Discover Search and Filter Python module...')
 print('Please wait...')
+
+__version__ = '1.0.0'
 
 ###################################################################################
 ###################################################################################
@@ -127,6 +132,10 @@ from huggingface_hub import hf_hub_download
 from typing import Tuple, Optional, Iterable, Union, Sequence, List
 
 import tqdm
+
+import hashlib
+
+import weakref
 
 ###################################################################################
 ###################################################################################
@@ -1934,134 +1943,151 @@ def fix_escore_notes_durations(escore_notes,
 
 def get_midi_features_matrixes(path_to_MIDI_file,
                                transpose_factor=6,
+                               remove_patches=False,
                                remove_drums=False
                               ):
 
     """
-    Extract a compact, fixed-size feature histogram matrix from a MIDI file suitable for
-    statistical analysis or machine-learning pipelines.
+    Convert a single-track MIDI file into one or more fixed-length feature histograms
+    ("source matrices") suitable for downstream ML or analysis tasks.
 
-    The function loads a MIDI file, runs a sequence of preprocessing steps to produce an
-    "enhanced score" (monophonic/annotated note representation), optionally transposes the
-    musical content across a small range, chordifies the score, and then accumulates counts
-    of several event-level features into a single fixed-length vector (matrix) per
-    transposition. The output is a list of these vectors (one per transposition value).
+    Summary
+    -------
+    This function:
+    - Loads a MIDI file and converts it into an internal "enhanced score" representation.
+    - Normalizes and augments note events (timings, durations, duplicate-pitch removal).
+    - Optionally transposes the score across a small range of semitone shifts.
+    - Chordifies the score (groups simultaneous/near-simultaneous events into chord frames).
+    - For each chord frame, accumulates counts into a fixed-length vector (length 961)
+      that encodes: inter-chord delta-times, note durations, instrument/patch values,
+      pitch classes (with separate handling for drums), and recognized chord tokens.
+    - Returns a list of these vectors (one per transpose shift attempted).
 
     Parameters
     ----------
     path_to_MIDI_file : str
-        Filesystem path to the MIDI file to process. The function expects a readable MIDI
-        file and will pass it to the project's MIDI parsing helper `midi2single_track_ms_score`.
+        Filesystem path to the MIDI file to process. The function expects a single-track
+        MIDI or will convert multi-track input into a single-track enhanced score.
     transpose_factor : int, optional
-        Non-negative integer controlling the transposition range. The value is clamped to
-        the interval [0, 6]. If `transpose_factor == 0` the function computes features for
-        the original pitch set only (one matrix). If `transpose_factor > 0` the function
-        iterates `tv` over `range(-transpose_factor, transpose_factor)` (i.e. `-tf .. tf-1`)
-        and produces one matrix per `tv` value, where `tv` is added to non-drum pitch
-        values when computing pitch-related tokens. Default is 6.
+        Maximum semitone shift to explore in both directions. The value is clipped to
+        the range [0, 6]. If zero (default), no transposition is performed and a single
+        matrix is returned. If > 0, matrices are produced for each integer transpose
+        value in range(-transpose_factor, transpose_factor) (i.e., symmetric shifts).
+    remove_patches : bool, optional
+        If True, patch/instrument information is omitted from the feature vector.
+        If False (default), patch counts are included.
     remove_drums : bool, optional
-        If True, events/chords that are only drum-channel events (channel == 9) are
-        excluded from the feature counts; individual drum events are also skipped when
-        counting non-drum features. If False, drum events are included and are encoded
-        with a dedicated offset in the pitch token space. Default is False.
+        If True, drum events (MIDI channel 9) are ignored. If False (default), drum
+        events are included and encoded in the pitch region reserved for drums.
 
     Returns
     -------
-    list[list[int]]
-        A list of integer vectors (lists) where each vector has length 961. Each vector is
-        a histogram of feature-token counts collected from the chordified score for one
-        transposition value. The number of returned vectors equals:
-        - 1 when `transpose_factor == 0`
-        - `2 * transpose_factor` when `transpose_factor > 0` (because range is
-          `-tf .. tf-1`).
+    List[List[int]]
+        A list of integer vectors (each length 961). Each vector is a histogram-like
+        feature representation of the chordified score for one transpose shift.
+        The outer list length equals 1 when `transpose_factor == 0`, otherwise it
+        equals `2 * transpose_factor` (range(-t, t) excludes the endpoint t).
 
-    Matrix layout (index ranges and meaning)
-    ----------------------------------------
-    The returned vector has 961 positions (indices 0..960). Each index bucket counts
-    occurrences of a particular discrete feature value. The mapping is:
+    Feature vector layout (index ranges)
+    -----------------------------------
+    The returned vector has fixed length 961. Indices are used as follows:
 
-    - Indices **0 .. 127** : **delta-time** between consecutive chords (clamped to [0,127]).
-      Each chord increments `matrix[dtime]` where `dtime = clamp(c[0][1] - prev_c[0][1], 0, 127)`.
+    - 0 .. 127
+      **Delta-time counts**: counts of the inter-chord onset distance (clipped to 0..127).
+      Index = clipped_delta_time.
 
-    - Indices **128 .. 255** : **note/event durations** (clamped to [1,127]) stored at
-      `matrix[duration + 128]`. Duration values are clamped and a minimum of 1 is used.
+    - 128 .. 255
+      **Note duration counts**: counts of note durations (clipped to 1..127).
+      Index = 128 + clipped_duration.
 
-    - Indices **256 .. 383** : **pattern / articulation token** (field `e[6]`), clamped
-      to [0,128] and stored at `matrix[pattern + 256]`.
+    - 256 .. 383
+      **Patch / instrument counts** (only if remove_patches is False):
+      Index = 256 + clipped_patch (clipped to 0..128).
 
-    - Indices **384 .. 639** : **pitch tokens** (clamped to [1,127] then offset).
-      For each event `e`:
-        - `ptc = clamp(e[4], 1, 127)`
-        - If the event is a drum (channel == 9) then `ptc += 128` (separates drums).
-        - Else `ptc += tv` (applies current transposition value).
-      The final index is `matrix[ptc + 384]`.
+    - 384 .. 510
+      **Melodic pitch counts**: counts of melodic note pitches after optional transpose.
+      Pitch values are clipped to 1..127 before indexing.
+      Index = 384 + clipped_pitch (where clipped_pitch = max(1, min(127, pitch + transpose))).
 
-    - Indices **640 .. 960** : **chord-type tokens**. When a chord contains more than one
-      non-drum pitch, the chord's pitch classes (mod 12) are computed, normalized and
-      matched against the global `ALL_CHORDS_SORTED` list. The index used is
-      `matrix[chord_token_index + 640]`. The number of chord tokens equals `961 - 640 = 321`
-      (the code assumes `ALL_CHORDS_SORTED` covers this token space). If a chord's pitch
-      class set is not present in `ALL_CHORDS_SORTED`, `check_and_fix_tones_chord` is
-      called to attempt a correction before lookup.
+    - 513 .. 639
+      **Drum pitch counts**: drum note pitches (channel 9) are offset into this
+      subrange by adding 128 to the clipped pitch before adding the 384 base:
+      Index = 384 + (clipped_drum_pitch + 128) => 513..639.
 
-    Notes and behavior details
-    --------------------------
-    - Preprocessing pipeline: the function calls the following helpers in order and
-      expects them to be available in the environment:
-        `midi2single_track_ms_score`,
-        `advanced_score_processor(return_enhanced_score_notes=True)`,
-        `augment_enhanced_score_notes(..., timings_divider=32)`,
-        `remove_duplicate_pitches_from_escore_notes`,
-        `fix_escore_notes_durations(..., min_notes_gap=0)`,
-        `chordify_score`.
-      These helpers must return data in the expected enhanced-score/event formats used
-      by the rest of the function (see project codebase for exact data structures).
-    - The function clamps numeric fields to avoid out-of-range indices (all clamps shown
-      above). Durations are clamped to a minimum of 1 when stored in the duration bucket.
-    - Drum handling: drums are identified by `e[3] == 9`. When `remove_drums` is True,
-      chords composed entirely of drum events are skipped and individual drum events are
-      not counted in duration/pattern/pitch buckets. When `remove_drums` is False, drum
-      pitches are encoded into the pitch token space by adding 128 to the pitch before
-      offsetting into the 384..639 range.
-    - Transposition iteration: `transpose_factor` is clamped to [0,6]. If > 0 the loop
-      iterates `tv` in `range(-transpose_factor, transpose_factor)` producing multiple
-      matrices; otherwise only `tv == 0` is used.
-    - The function uses `ALL_CHORDS_SORTED` and `check_and_fix_tones_chord` to map chord
-      pitch-class sets to chord token indices; these must be defined and consistent with
-      the expected token count (321 tokens starting at index 640).
+    - 640 .. (640 + N_chords - 1)
+      **Chord token counts**: if the set of pitch classes in a chord (sorted, modulo 12)
+      matches an entry in the global `ALL_CHORDS_SORTED` list, the corresponding
+      chord token index is incremented at `640 + chord_index`.
+      (The code expects `ALL_CHORDS_SORTED` to be defined and indexable.)
 
-    Return value properties
-    -----------------------
-    - Each returned vector is a histogram of counts (non-negative integers).
-    - The vectors are deterministic given the same preprocessing helpers and MIDI input.
-    - If the input score contains no chords/events (or all chords are skipped due to
-      `remove_drums`), the function still returns the expected number of vectors, each
-      initialized to zeros (length 961).
+    Notes and assumptions
+    ---------------------
+    - The function relies on several helper functions and global variables that must
+      be available in the module scope:
+        * `midi2single_track_ms_score(path_to_MIDI_file, do_not_check_MIDI_signature=True)`
+        * `advanced_score_processor(raw_score, return_enhanced_score_notes=True)`
+        * `augment_enhanced_score_notes(escore, timings_divider=...)`
+        * `remove_duplicate_pitches_from_escore_notes(escore)`
+        * `fix_escore_notes_durations(escore, min_notes_gap=0)`
+        * `chordify_score([1000, escore])`
+        * `ALL_CHORDS_SORTED` (list of chord pitch-class sets)
+      These helpers must return/accept the expected formats described below.
+
+    - Expected event / chord data format:
+      * `chordify_score` returns a list of chord frames; each chord frame `c` is a
+        list of event tuples/lists. The code accesses event fields by numeric indices:
+          - `e[1]` : event onset time (used to compute delta-time between chord frames)
+          - `e[2]` : event duration (used for duration histogram)
+          - `e[3]` : event channel (channel == 9 indicates drums)
+          - `e[4]` : event pitch (MIDI note number)
+          - `e[6]` : event patch/program number (instrument)
+        If your event tuples differ, adapt the helper functions or this function.
+
+    - Clipping behavior:
+      * Delta-times are clipped to 0..127.
+      * Durations are clipped to 1..127 (duration 0 is treated as 1).
+      * Pitches used for melodic indexing are clipped to 1..127.
+      * Patch values are clipped to 0..128.
+      * These clamps ensure indices remain inside the fixed vector bounds.
+
+    - Transposition:
+      * For melodic pitches, the transpose offset `tv` is added to the pitch before
+        clipping and indexing. Drum pitches are not transposed (drum pitch indexing
+        uses the raw pitch and is offset into the drum subrange).
+
+    - Drums:
+      * Drum events are detected by `e[3] == 9`. When `remove_drums` is False,
+        drum durations, patches (if enabled), and drum pitch counts are included.
+      * If a chord frame contains only drum events (no melodic pitches), a delta-time
+        count is still recorded for that frame.
 
     Complexity
     ----------
-    Let E be the number of events and C the number of chord groups after chordification.
-    The function iterates over chords and events once per transposition value, so time
-    complexity is approximately O(T * (C + E)) where T is the number of transposition
-    steps (1 or `2 * transpose_factor`). Memory complexity is O(T * 961) for the output.
-
-    Exceptions and edge cases
-    -------------------------
-    - The function does not itself raise specialized exceptions for malformed MIDI; errors
-      will propagate from the underlying helper functions (e.g., file I/O or parsing
-      errors from `midi2single_track_ms_score`).
-    - If `ALL_CHORDS_SORTED.index(...)` fails after `check_and_fix_tones_chord`, a
-      `ValueError` will propagate; ensure `ALL_CHORDS_SORTED` and the fixer function are
-      consistent with the project's chord vocabulary.
+    - Time complexity is linear in the number of chord frames and events.
+    - Memory usage is dominated by the returned list of fixed-size vectors.
 
     Example
     -------
-    >>> matrices = get_midi_features_matrixes("path/to/file.mid", transpose_factor=2, remove_drums=True)
+    >>> matrices = extract_src_matrixes_from_midi("song.mid", transpose_factor=2,
+    ...                                           remove_patches=False, remove_drums=False)
     >>> len(matrices)
-    4  # transpose_factor=2 -> tv in [-2, -1, 0, 1]
+    4  # transpose_factor=2 -> range(-2,2) => 4 matrices
     >>> len(matrices[0])
     961
 
+    Implementation details
+    ----------------------
+    - The function enforces `transpose_factor = max(0, min(6, transpose_factor))` so
+      the maximum allowed transposition range is +/-6 semitones.
+    - The function uses a fixed `timings_divider=32` when augmenting enhanced notes
+      (this is applied inside `augment_enhanced_score_notes` in the original flow).
+    - If you change the vector layout or the clipping ranges, update downstream
+      consumers accordingly.
+
+    Returns
+    -------
+    list of int lists
+        One histogram vector per transpose shift attempted.
     """
 
     raw_score = midi2single_track_ms_score(path_to_MIDI_file, do_not_check_MIDI_signature=True)
@@ -2097,45 +2123,74 @@ def get_midi_features_matrixes(path_to_MIDI_file,
 
         for c in cscore:
 
-            if remove_drums:
-                if all(True if e[3] == 9 else False for e in c):
-                    continue
-
-            dtime = max(0, min(127, c[0][1]-pc[0][1]))
-            matrix[dtime] += 1
-
-            for e in c:
-
-                if remove_drums:
-                    if e[3] == 9:
-                        continue
-
-                dur = max(1, min(127, e[2]))
-                matrix[dur+128] += 1
-                
-                pat = max(0, min(128, e[6]))
-                matrix[pat+256] += 1
-                
-                ptc = max(1, min(127, e[4]))
-                
-                if e[3] == 9:
-                    ptc += 128
-
-                else:
-                    ptc += tv
-
-                matrix[ptc+384] += 1
-
             pitches = sorted(set([e[4]+tv for e in c if e[3] != 9]))
+            drums_present = any(True if e[3] == 9 else False for e in c)
+
+            if len(pitches) == 1:
+                
+                dtime = max(0, min(127, c[0][1]-pc[0][1]))
+                matrix[dtime] += 1
+
+                for e in c:
+                    if e[3] != 9:
+                        
+                        dur = max(1, min(127, e[2]))
+                        matrix[dur+128] += 1
+
+                        if not remove_patches:
+                            pat = max(0, min(128, e[6]))
+                            matrix[pat+256] += 1
+                        
+                        ptc = max(1, min(127, e[4]+tv))
+
+                        matrix[ptc+384] += 1
 
             if len(pitches) > 1:
+                
+                dtime = max(0, min(127, c[0][1]-pc[0][1]))
+                matrix[dtime] += 1
+                
                 tones_chord = sorted(set([p % 12 for p in pitches]))
 
-                if tones_chord not in ALL_CHORDS_SORTED:
-                    tones_chord = check_and_fix_tones_chord(tones_chord)
+                if tones_chord in ALL_CHORDS_SORTED:
+                    chord_tok = ALL_CHORDS_SORTED.index(tones_chord)
+                    matrix[chord_tok+640] += 1
+                    
+                    for e in c:
+                        if e[3] != 9:
+                        
+                            dur = max(1, min(127, e[2]))
+                            matrix[dur+128] += 1
 
-                chord_tok = ALL_CHORDS_SORTED.index(tones_chord)
-                matrix[chord_tok+640] += 1
+                            if not remove_patches:
+                                pat = max(0, min(128, e[6]))
+                                matrix[pat+256] += 1
+                            
+                            ptc = max(1, min(127, e[4]+tv))
+    
+                            matrix[ptc+384] += 1
+
+            if drums_present and not remove_drums:
+
+                if not pitches:
+                    dtime = max(0, min(127, c[0][1]-pc[0][1]))
+                    matrix[dtime] += 1
+
+                for e in c:
+
+                    if e[3] == 9:
+
+                        dur = max(1, min(127, e[2]))
+                        matrix[dur+128] += 1
+
+                        if not remove_patches:
+                            pat = max(0, min(128, e[6]))
+                            matrix[pat+256] += 1
+                        
+                        ptc = max(1, min(127, e[4]))
+                        ptc += 128
+
+                        matrix[ptc+384] += 1
 
             pc = c
 
@@ -2504,6 +2559,7 @@ def search_and_filter(features_matrixes,
                       max_number_of_top_k_matches=16,
                       include_master_midis=True,
                       master_midis_transpose_factor=6,
+                      remove_patches_from_master_midis=False,
                       remove_drums_from_master_midis=False,
                       p=3.0,
                       chunk_rows=200000,
@@ -2569,9 +2625,12 @@ def search_and_filter(features_matrixes,
         Maximum semitone transpose range to apply to master MIDIs. Value is
         clamped to [0, 6]. If > 0, the function searches matches for each transpose
         offset in `range(-transpose_factor, transpose_factor)` (default 6).
+    remove_patches_from_master_midis : bool, optional
+        Remove patches from master MIDIs before search. This is useful when patches
+        are not important for desired search results.
     remove_drums_from_master_midis : bool, optional
         Remove drums from master MIDIs before search. This is useful when drums
-        are not important in expected results.
+        are not important for desired search results.
     p : float, optional
         Minkowski distance exponent used by the GPU top-k routine (default 3.0).
     chunk_rows : int, optional
@@ -2653,7 +2712,7 @@ def search_and_filter(features_matrixes,
     
     Performance and tuning notes
     ----------------------------
-    - Designed to scale to large Discover datasets by chunking both the mean/std computation
+    - Designed to scale to large MIDI datasets by chunking both the mean/std computation
       and the top-k search. Tune `chunk_rows`, `y_chunk_size`, `dim_chunk`, and `q_batch_size`
       to match available GPU memory and desired throughput.
     - Enabling `use_fp16` reduces memory usage and may increase throughput on supported GPUs,
@@ -2734,6 +2793,7 @@ def search_and_filter(features_matrixes,
     
         src_fmatrixes = get_midi_features_matrixes(midi,
                                                    transpose_factor=transpose_factor,
+                                                   remove_patches=remove_patches_from_master_midis,
                                                    remove_drums=remove_drums_from_master_midis
                                                   )
 
@@ -2837,7 +2897,7 @@ def search_and_filter(features_matrixes,
         print("=" * 70)
         print("Done!")
         print("=" * 70)
-    
+   
 ###################################################################################
 
 def align_feature_vectors(
