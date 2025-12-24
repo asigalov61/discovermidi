@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from note_set import NoteSet
+from .note_set import NoteSet
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

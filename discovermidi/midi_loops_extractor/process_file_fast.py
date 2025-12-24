@@ -6,8 +6,8 @@ from miditok.utils import get_bars_ticks, get_beats_ticks
 from miditok.constants import CLASS_OF_INST, INSTRUMENT_CLASSES
 from symusic import Score, Track, TimeSignature
 
-from corr_mat_fast import calc_correlation, get_valid_loops
-from note_set_fast import compute_note_sets
+from .corr_mat_fast import calc_correlation, get_valid_loops
+from .note_set_fast import compute_note_sets
 
 MAX_NOTES_PER_TRACK = 50000
 MIN_NOTES_PER_TRACK = 5

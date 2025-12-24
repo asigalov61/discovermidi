@@ -6,7 +6,7 @@ import os
 import numpy as np
 import threading
 
-from note_set_fast import NoteSet  # updated import path if you renamed file
+from .note_set_fast import NoteSet  # updated import path if you renamed file
 
 if TYPE_CHECKING:
     from symusic import Note
