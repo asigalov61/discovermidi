@@ -64,7 +64,7 @@ r'''############################################################################
 #   !pip install matplotlib
 #   !pip install midirenderer
 #   !pip install mididoctor
-#   !pip install numpy==1.24.4
+#   !pip install numpy==1.26.4
 #
 ###################################################################################
 ###################################################################################
@@ -3454,7 +3454,8 @@ def parallel_extract(tar_path: str = './Discover-MIDI-Dataset/Discover-MIDI-Data
 def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
                      filename='Discover-MIDI-Dataset-CC-BY-NC-SA.tar.gz',
                      local_dir='./Discover-MIDI-Dataset/',
-                     verbose=True
+                     verbose=True,
+                     **kwargs
                     ):
 
     """Download the Discover MIDI Dataset archive from the Hugging Face Hub.
@@ -3477,6 +3478,8 @@ def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
         Local directory where the downloaded file will be stored or cached.
         The directory will be created by the underlying `hf_hub_download` if
         necessary. Default: `'./Discover-MIDI-Dataset/'`.
+    kwargs : dict, optional
+        Additional args for hf_hub_download function
     
     Returns
     -------
@@ -3512,7 +3515,8 @@ def download_dataset(repo_id='projectlosangeles/Discover-MIDI-Dataset',
     result = hf_hub_download(repo_id=repo_id,
                              repo_type='dataset',
                              filename=filename,
-                             local_dir=local_dir
+                             local_dir=local_dir,
+                             **kwargs
                             )
     
     print('=' * 70)
