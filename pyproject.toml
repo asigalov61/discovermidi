@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "discovermidi"
-version = "25.12.49"
+version = "26.5.18"
 description = "Ultimate MIDI dataset for MIDI music discovery and symbolic music AI purposes"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -20,11 +20,13 @@ dependencies = [
   "scikit-learn",
   "scipy",
   "matplotlib",
-  "hf-transfer",
   "huggingface_hub",
   "torch",
   "midirenderer",
   "mididoctor",
+  "midisplitter",
+  "midicap",
+  "midiano",
   "numpy==1.26.4"
 ]
 
@@ -112,5 +114,8 @@ full = [
   "einops",
   "einx",
   "nltk",
+  "pyphen",
+  "pronouncing",
+  "midisim",
   "numpy==1.26.4"
 ]
