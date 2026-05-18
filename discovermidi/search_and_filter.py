@@ -13,7 +13,7 @@ r'''############################################################################
 #
 #	Project Los Angeles
 #
-#	Tegridy Code 2025
+#	Tegridy Code 2026
 #
 #   https://github.com/Tegridy-Code/Project-Los-Angeles
 #
@@ -21,7 +21,7 @@ r'''############################################################################
 ###################################################################################
 ###################################################################################
 #
-#   Copyright 2025 Project Los Angeles / Tegridy Code
+#   Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -54,7 +54,6 @@ r'''############################################################################
 #   Critical dependencies
 #
 #   !pip install huggingface_hub
-#   !pip install hf-transfer
 #   !pip install ipywidgets
 #   !pip install tqdm
 #
@@ -98,7 +97,7 @@ __version__ = '1.0.0'
 
 import os, sys, struct, copy
 
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
 import time
 
@@ -3625,5 +3624,5 @@ print('Enjoy! :)')
 print('=' * 70)
 
 ###################################################################################
-# This is the end of the Discover_search_and_filter Python module
+# This is the end of the Discover Search and Filter Python module
 ###################################################################################

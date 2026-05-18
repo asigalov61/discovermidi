@@ -9,14 +9,14 @@ r'''############################################################################
 #
 #	    Project Los Angeles
 #
-#	    Tegridy Code 2025
+#	    Tegridy Code 2026
 #
 #       https://github.com/asigalov61/tegridy-tools
 #
 #
 ################################################################################
 #
-#       Copyright 2024 Project Los Angeles / Tegridy Code
+#       Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #       Licensed under the Apache License, Version 2.0 (the "License");
 #       you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ r'''############################################################################
 #
 #       Critical dependencies
 #
-#       !pip install cupy-cuda12x
-#       !pip install numpy==1.24.4
+#       !pip install cupy-cuda13x
+#       !pip install numpy==1.26.4
 #
 ################################################################################
 '''
@@ -52,6 +52,7 @@ print('=' * 70)
 
 import sys
 import os
+import tqdm
 
 ################################################################################
 
@@ -1081,6 +1082,263 @@ def pairwise_cosine_similarity(X: cp.ndarray, eps: float = 1e-10) -> cp.ndarray:
     cosine_similarity = dot_product / (norm_matrix + eps)
     
     return cosine_similarity
+
+###################################################################################
+
+def cosine_similarities(src_array, trg_array):
+    
+    """
+    Computes cosine similarities between 1D src array and 2D trg array
+    """
+   
+    src_norm = cp.linalg.norm(src_array)
+
+    trg_norms = cp.linalg.norm(trg_array, axis=1)
+
+    dot_products = cp.dot(trg_array, src_array)
+
+    cosine_sims = dot_products / (src_norm * trg_norms + 1e-10)
+    
+    return cosine_sims
+
+###################################################################################
+
+def embeddings_topk_cosine_neighbors(embeddings,
+                                     k=1,
+                                     row_batch=4096,
+                                     col_batch=4096
+                                    ):
+    
+    """
+    For each embedding, find the indices and similarities of its top-k neighbors,
+    excluding itself, sorted by descending similarity.
+
+    Args:
+        embeddings (cp.ndarray): shape (N, D), float32 on GPU.
+        k (int): how many neighbors to return (must be < N).
+        row_batch (int): number of rows to process at once.
+        col_batch (int): number of columns to process at once.
+
+    Returns:
+        top_idx (cp.ndarray): shape (N, k), int32 indices of nearest neighbors.
+        top_sim (cp.ndarray): shape (N, k), float32 cosine similarities.
+                             Each row is sorted descending.
+    """
+    
+    # normalize embeddings to unit length
+    norms = cp.linalg.norm(embeddings, axis=1, keepdims=True)
+    embeddings /= norms
+
+    N, D = embeddings.shape
+    if not (1 <= k < N):
+        raise ValueError(f"k must satisfy 1 ≤ k < N; got N={N}, k={k}")
+
+    # placeholders for top-k
+    top_sim = cp.full((N, k), -cp.inf, dtype=cp.float32)
+    top_idx = cp.full((N, k), -1, dtype=cp.int32)
+
+    for i in tqdm.tqdm(range(0, N, row_batch)):
+        i_end = min(i + row_batch, N)
+        rows = embeddings[i:i_end]           # (rb, D)
+        rb = i_end - i
+
+        # per-block buffers
+        best_s = top_sim[i:i_end]            # (rb, k)
+        best_i = top_idx[i:i_end]            # (rb, k)
+        row_ids = cp.arange(i, i_end)        # (rb,)
+
+        for j in range(0, N, col_batch):
+            j_end = min(j + col_batch, N)
+            cols = embeddings[j:j_end]       # (cb, D)
+            sims = rows.dot(cols.T)          # (rb, cb)
+
+            # mask out self-similarities
+            # find rows whose global index ∈ [j, j_end)
+            mask = (row_ids >= j) & (row_ids < j_end)
+            if mask.any():
+                local_rows = cp.where(mask)[0]
+                local_cols = row_ids[mask] - j
+                sims[local_rows, local_cols] = -cp.inf
+
+            # get top-k within this block
+            # argpartition to grab k largest in each row
+            part = cp.argpartition(sims, -k, axis=1)[:, -k:]       # (rb, k)
+            blk_s = sims[cp.arange(rb)[:, None], part]            # (rb, k)
+            blk_i = part + j                                       # (rb, k)
+
+            # merge with running best
+            cat_s = cp.concatenate([best_s, blk_s], axis=1)       # (rb, 2k)
+            cat_i = cp.concatenate([best_i, blk_i], axis=1)
+
+            # select new top-k from the 2k candidates
+            part2 = cp.argpartition(cat_s, -k, axis=1)[:, -k:]
+            best_s = cat_s[cp.arange(rb)[:, None], part2]
+            best_i = cat_i[cp.arange(rb)[:, None], part2]
+
+        # write back
+        top_sim[i:i_end] = best_s
+        top_idx[i:i_end] = best_i
+
+    # final sort per row so sims descend
+    if k > 1:
+        order = cp.argsort(-top_sim, axis=1)
+        top_sim = cp.take_along_axis(top_sim, order, axis=1)
+        top_idx = cp.take_along_axis(top_idx, order, axis=1)
+
+    # if k==1, squeeze dims
+    if k == 1:
+        return top_idx.ravel(), top_sim.ravel()
+    
+    return top_idx, top_sim
+
+###################################################################################
+
+def find_matches_fast(src_array, trg_array, seed: int = 0) -> int:
+    
+    """
+    Count how many rows in src_array also appear in trg_array using CuPy (GPU).
+    Uses a non-linear 64-bit FNV-1a hash over raw bytes to avoid collisions.
+    """
+
+    src = cp.ascontiguousarray(cp.asarray(src_array))
+    trg = cp.ascontiguousarray(cp.asarray(trg_array))
+
+    if src.dtype != trg.dtype or src.ndim != 2 or trg.ndim != 2 or src.shape[1] != trg.shape[1]:
+        raise ValueError("src and trg must be 2D arrays with same dtype and same number of columns")
+
+    # bytes per row
+    bpr = src.dtype.itemsize * src.shape[1]
+
+    # view rows as bytes
+    src_bytes = src.view(cp.uint8).reshape(src.shape[0], bpr)
+    trg_bytes = trg.view(cp.uint8).reshape(trg.shape[0], bpr)
+
+    # FNV-1a constants
+    FNV_OFFSET = cp.uint64(0xcbf29ce484222325 ^ seed)
+    FNV_PRIME  = cp.uint64(0x100000001b3)
+
+    # hash rows
+    def fnv1a_hash(byte_matrix):
+        h = cp.full((byte_matrix.shape[0],), FNV_OFFSET, dtype=cp.uint64)
+        for i in range(bpr):
+            h ^= byte_matrix[:, i].astype(cp.uint64)
+            h *= FNV_PRIME
+        return h
+
+    src_fp = fnv1a_hash(src_bytes)
+    trg_fp = fnv1a_hash(trg_bytes)
+
+    # count matches
+    return int(cp.isin(src_fp, trg_fp).sum())
+
+###################################################################################
+
+def find_repeating_non_overlapping_patterns(arr, min_len):
+    """
+    Finds all repeating non-overlapping patterns of min_len and longer.
+    GPU-Accelerated using CuPy with O(N) memory per length.
+    """
+    n = len(arr)
+    if n < min_len * 2:
+        return {}
+
+    arr_cpu = np.asarray(arr, dtype=np.int64)
+    arr_gpu = cp.asarray(arr_cpu)
+    max_len = n // 2
+
+    consumed = [False] * n
+    result = {}
+
+    # Use a large prime base. We intentionally let np.int64 overflow naturally 
+    # (modulo 2^64), which cancels out perfectly in the subtraction below.
+    BASE = np.int64(1000000007)
+    
+    # Pre-compute rolling powers (suppress the expected overflow warning)
+    powers_cpu = np.ones(max_len + 1, dtype=np.int64)
+    with np.errstate(over='ignore'):
+        for i in range(1, max_len + 1):
+            powers_cpu[i] = powers_cpu[i-1] * BASE
+            
+    powers_gpu = cp.asarray(powers_cpu)
+
+    # Prefix sum array allows O(1) hash retrieval for any length
+    pref = cp.zeros(n + 1, dtype=cp.int64)
+    pref[1:] = arr_gpu
+    for i in range(1, n + 1):
+        pref[i] = pref[i-1] * BASE + arr_gpu[i-1]
+
+    for L in range(max_len, min_len - 1, -1):
+        n_hashes = n - L + 1
+        if n_hashes <= 0:
+            continue
+
+        # 1. O(1) Space Hashing on GPU
+        # Subtracting two overflowed sums perfectly cancels out the overflow, 
+        # yielding the exact polynomial hash difference.
+        raw = pref[L:L + n_hashes] - (pref[:n_hashes] * powers_gpu[L])
+        
+        # XOR the upper and lower 32 bits to guarantee a positive, uniformly distributed hash
+        hash_l = raw ^ (raw >> 32)
+
+        # 2. Group matching hashes via Global Sort
+        sort_idx = cp.argsort(hash_l)
+        sorted_hash = hash_l[sort_idx]
+        
+        # Find boundaries where hashes change
+        diff_idx = cp.where(sorted_hash[1:] != sorted_hash[:-1])[0]
+        start_idx = cp.concatenate([cp.array([0]), diff_idx + 1])
+        end_idx = cp.concatenate([diff_idx + 1, cp.array([n_hashes])])
+        
+        # Keep only hashes that appear 2 or more times
+        valid_mask = (end_idx - start_idx) >= 2
+        start_idx_cpu = cp.asnumpy(start_idx[valid_mask])
+        end_idx_cpu = cp.asnumpy(end_idx[valid_mask])
+        
+        if len(start_idx_cpu) == 0:
+            continue
+
+        # 3. Extract all candidate indices to CPU in ONE fast transfer
+        sort_cpu = cp.asnumpy(sort_idx)
+        indices_flat = sort_cpu[np.concatenate([np.arange(s, e) for s, e in zip(start_idx_cpu, end_idx_cpu)])]
+        
+        # 4. Group by EXACT sub-array content using tobytes() to enforce 100% correctness
+        groups = {}
+        for idx in indices_flat:
+            pat_key = bytes(arr_cpu[idx:idx+L].tobytes())
+            if pat_key not in groups:
+                groups[pat_key] = []
+            groups[pat_key].append(idx)
+          
+        # 5. Process each pattern (Sequential greedy interval selection)
+        for pat_key, indices in groups.items():
+            count = 0
+            last_end = -1
+            
+            valid_indices = []
+            for i in indices:
+                if consumed[i]:
+                    continue
+                if i >= last_end:
+                    count += 1
+                    last_end = i + L
+                    valid_indices.append(i)
+            
+            if count >= 2:
+                # Reconstruct the tuple pattern, casting to native Python int
+                pat = tuple(int(x) for x in arr_cpu[valid_indices[0]:valid_indices[0]+L])
+                result[pat] = count
+                
+                # Re-iterate to mark consumed indices
+                last_end = -1
+                for i in indices:
+                    if consumed[i]:
+                        continue
+                    if i >= last_end:
+                        for k in range(i, i + L):
+                            consumed[k] = True
+                        last_end = i + L
+
+    return result
 
 ###################################################################################
 

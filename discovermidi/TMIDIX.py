@@ -1,25 +1,23 @@
 #! /usr/bin/python3
 
-r'''###############################################################################
-###################################################################################
-#
+r'''
+###############################################################################
 #
 #	Tegridy MIDI X Module (TMIDI X / tee-midi eks)
 #
-#   NOTE: TMIDI X Module starts after the partial MIDI.py module @ line 1450
+#   NOTE: TMIDI X Module starts after the partial MIDI.py module @ line 1461
 #
 #	Based upon MIDI.py module v.6.7. by Peter Billam / pjb.com.au
 #
 #	Project Los Angeles
 #
-#	Tegridy Code 2025
+#	Tegridy Code 2026
 #
 #   https://github.com/Tegridy-Code/Project-Los-Angeles
 #
+###################################################################################
 #
-###################################################################################
-###################################################################################
-#   Copyright 2025 Project Los Angeles / Tegridy Code
+#   Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -32,7 +30,7 @@ r'''############################################################################
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-###################################################################################
+#
 ###################################################################################
 #
 #	PARTIAL MIDI.py Module v.6.7. by Peter Billam
@@ -46,12 +44,13 @@ r'''############################################################################
 #	Copyright 2020 Peter Billam
 #
 ###################################################################################
-###################################################################################
 '''
 
 ###################################################################################
 
-__version__ = "25.12.29"
+__version__ = "26.5.18" # TMIDIX version
+
+###################################################################################
 
 print('=' * 70)
 print('TMIDIX Python module')
@@ -63,12 +62,24 @@ print('Loading module...')
 
 import sys, struct, copy
 
+###################################################################################
+
 Version = '6.7'
 VersionDate = '20201120'
+
+###################################################################################
 
 _previous_warning = ''  # 5.4
 _previous_times = 0     # 5.4
 _no_warning = False
+
+###################################################################################
+
+def set_no_warning(value: bool):
+    global _no_warning
+    _no_warning = value
+    
+###################################################################################
 
 #------------------------------- Encoding stuff --------------------------
 
@@ -1448,8 +1459,6 @@ def _encode(events_lol, unknown_callback=None, never_add_eot=False,
     return b''.join(data)
 
 ###################################################################################
-###################################################################################
-###################################################################################
 #
 #	Tegridy MIDI X Module (TMIDI X / tee-midi eks)
 #
@@ -1457,15 +1466,19 @@ def _encode(events_lol, unknown_callback=None, never_add_eot=False,
 #	pjb.com.au
 #
 #	Project Los Angeles
-#	Tegridy Code 2025
+#	Tegridy Code 2026
 #
 #   https://github.com/Tegridy-Code/Project-Los-Angeles
 #
 ###################################################################################
-###################################################################################
-###################################################################################
 
 import os
+
+import platform
+
+import ctypes
+
+import time
 
 import datetime
 
@@ -1483,10 +1496,13 @@ import tqdm
 
 import multiprocessing
 
+import bisect
+
 from itertools import zip_longest
 from itertools import groupby
 from itertools import cycle
 from itertools import product
+from itertools import accumulate
 
 from collections import Counter
 from collections import defaultdict
@@ -1494,6 +1510,7 @@ from collections import OrderedDict
 from collections import deque
 
 from operator import itemgetter
+from operator import ne as _ne
 
 from abc import ABC, abstractmethod
 
@@ -1503,11 +1520,13 @@ import statistics
 import math
 from math import gcd
 
-from functools import reduce
+from functools import reduce, lru_cache
+
+import struct
+
+import heapq
 
 import matplotlib.pyplot as plt
-
-import psutil
 
 import json
 
@@ -1521,6 +1540,10 @@ from array import array
 
 from pathlib import Path
 from fnmatch import fnmatch
+
+from typing import List, Optional, Tuple, Dict, Any, Optional, Iterable, Set
+
+import subprocess
 
 ###################################################################################
 #
@@ -1948,7 +1971,7 @@ def Tegridy_File_Time_Stamp(input_file_name='File_Created_on_', ext = ''):
 
 ###################################################################################
 
-def Tegridy_Any_Pickle_File_Writer(Data, input_file_name='TMIDI_Pickle_File'):
+def Tegridy_Any_Pickle_File_Writer(Data, input_file_name='TMIDI_Pickle_File', verbose=True):
 
   '''Tegridy Pickle File Writer
      
@@ -1959,23 +1982,27 @@ def Tegridy_Any_Pickle_File_Writer(Data, input_file_name='TMIDI_Pickle_File'):
 
   Project Los Angeles
   Tegridy Code 2021'''
-
-  print('Tegridy Pickle File Writer')
+  
+  if verbose:
+      print('Tegridy Pickle File Writer')
 
   full_path_to_output_dataset_to = input_file_name + '.pickle'
 
   if os.path.exists(full_path_to_output_dataset_to):
     os.remove(full_path_to_output_dataset_to)
-    print('Removing old Dataset...')
+    if verbose:
+        print('Removing old Dataset...')
   else:
-    print("Creating new Dataset file...")
+    if verbose:
+        print("Creating new Dataset file...")
 
   with open(full_path_to_output_dataset_to, 'wb') as filehandle:
     # store the data as binary data stream
     pickle.dump(Data, filehandle, protocol=pickle.HIGHEST_PROTOCOL)
 
-  print('Dataset was saved as:', full_path_to_output_dataset_to)
-  print('Task complete. Enjoy! :)')
+  if verbose:
+      print('Dataset was saved as:', full_path_to_output_dataset_to)
+      print('Task complete. Enjoy! :)')
 
 ###################################################################################
 
@@ -7142,7 +7169,8 @@ def escore_notes_to_binary_matrix(escore_notes,
                                   patch=0,
                                   flip_matrix=False,
                                   reverse_matrix=False,
-                                  encode_velocities=False
+                                  encode_velocities=False,
+                                  dry_run=False
                                   ):
 
   escore = [e for e in escore_notes if e[3] == channel and e[6] == patch]
@@ -7153,44 +7181,68 @@ def escore_notes_to_binary_matrix(escore_notes,
     max_last_dur = max([e[2] for e in last_notes])
 
     time_range = last_time+max_last_dur
+    
+    if dry_run:
+        escore_matrix = [[] for _ in range(time_range)]
+        
+        for note in escore:
 
-    escore_matrix = []
+            etype, time, duration, chan, pitch, velocity, pat = note
 
-    escore_matrix = [[0] * 128 for _ in range(time_range)]
+            time = max(0, time)
+            duration = max(1, duration)
+            chan = max(0, min(15, chan))
+            pitch = max(0, min(127, pitch))
+            velocity = max(1, min(127, velocity))
+            pat = max(0, min(128, pat))
 
-    for note in escore:
+            if channel == chan and patch == pat:
 
-        etype, time, duration, chan, pitch, velocity, pat = note
+              for t in range(time, min(time + duration, time_range)):
+                if encode_velocities:
+                    escore_matrix[t].extend([pitch, velocity])
+                    
+                else:
+                    escore_matrix[t].append(pitch)
+                    
+        return escore_matrix
+        
+    else:
+        escore_matrix = [[0] * 128 for _ in range(time_range)]
 
-        time = max(0, time)
-        duration = max(1, duration)
-        chan = max(0, min(15, chan))
-        pitch = max(0, min(127, pitch))
-        velocity = max(1, min(127, velocity))
-        pat = max(0, min(128, pat))
+        for note in escore:
 
-        if channel == chan and patch == pat:
+            etype, time, duration, chan, pitch, velocity, pat = note
 
-          for t in range(time, min(time + duration, time_range)):
-            if encode_velocities:
-                escore_matrix[t][pitch] = velocity
-                
-            else:
-                escore_matrix[t][pitch] = 1
+            time = max(0, time)
+            duration = max(1, duration)
+            chan = max(0, min(15, chan))
+            pitch = max(0, min(127, pitch))
+            velocity = max(1, min(127, velocity))
+            pat = max(0, min(128, pat))
 
-    if flip_matrix:
+            if channel == chan and patch == pat:
 
-      temp_matrix = []
+              for t in range(time, min(time + duration, time_range)):
+                if encode_velocities:
+                    escore_matrix[t][pitch] = velocity
+                    
+                else:
+                    escore_matrix[t][pitch] = 1
 
-      for m in escore_matrix:
-        temp_matrix.append(m[::-1])
+        if flip_matrix:
 
-      escore_matrix = temp_matrix
+          temp_matrix = []
 
-    if reverse_matrix:
-      escore_matrix = escore_matrix[::-1]
+          for m in escore_matrix:
+            temp_matrix.append(m[::-1])
 
-    return escore_matrix
+          escore_matrix = temp_matrix
+
+        if reverse_matrix:
+          escore_matrix = escore_matrix[::-1]
+
+        return escore_matrix
 
   else:
     return None
@@ -7209,6 +7261,7 @@ def binary_matrix_to_original_escore_notes(binary_matrix,
   for j in range(len(binary_matrix[0])):
 
       count = 1
+      i = 1
 
       for i in range(1, len(binary_matrix)):
 
@@ -9193,65 +9246,251 @@ def find_lrno_pattern_fast(lst):
 
 ###################################################################################
 
+def find_fuzzy_lrno_pattern_fast(lst, threshold=0, prefix_suffix_len=1):
+    
+    """
+    Find the longest repeating non-overlapping fuzzy pattern in a list of ints.
+
+    Parameters
+    ----------
+    lst               : list[int]
+    threshold         : int  — max element mismatches allowed in the *middle*
+                               segment (0 = exact, delegates to fast solver).
+    prefix_suffix_len : int  — p; prefix lst[i:i+p] and suffix lst[i+L-p:i+L]
+                               must match exactly in both occurrences.
+
+    Returns
+    -------
+    list[int]  — first occurrence of the longest fuzzy pattern, or [].
+    """
+    
+    # ── validation / fast paths ───────────────────────────────────────────────
+    if threshold == 0:
+        return find_lrno_pattern_fast(lst)
+
+    p = int(prefix_suffix_len)
+    n = len(lst)
+    min_len = p + p or 1     # max(2p, 1);  "or 1" handles p=0
+
+    if n < min_len + min_len:
+        return []
+
+    # ── local aliases — eliminates repeated global dict look-ups ─────────────
+    _br  = bisect.bisect_right
+    _ac  = accumulate
+    _p   = p
+    _pp  = p + p             # constant used in the hot loop
+
+    best_len   = 0
+    best_start = 0
+
+    # ── group starting positions by their exact p-element prefix ─────────────
+    # Positions are appended 0 … limit-1, so each group list is sorted.
+    limit = n - min_len + 1
+
+    if _p:
+        groups: dict = defaultdict(list)
+        for i in range(limit):
+            groups[tuple(lst[i : i + _p])].append(i)
+        group_iter = groups.values()
+    else:
+        # p == 0: no prefix constraint; one implicit group over all positions.
+        group_iter = [range(limit)]
+
+    # ── main pair search ──────────────────────────────────────────────────────
+    for positions in group_iter:
+        m = len(positions)
+        if m < 2:
+            continue
+
+        # Materialise to a list for O(1) indexed access
+        pos = list(positions) if not isinstance(positions, list) else positions
+
+        for a in range(m - 1):
+            i = pos[a]
+
+            # Upper-bound: best possible pattern length anchored at i is ⌊(n-i)/2⌋.
+            # pos is sorted → all later a have larger i → safe to break.
+            if (n - i) >> 1 <= best_len:
+                break
+
+            for b in range(a + 1, m):
+                j = pos[b]        # j > i (positions are sorted)
+
+                nj = n - j
+                if nj <= best_len:
+                    break         # j grows → nj shrinks; no further j can help
+
+                # Non-overlap + right-fit: max pattern length for this pair
+                max_L = j - i if (j - i) < nj else nj
+                if max_L <= best_len:
+                    continue      # this j too close; a larger j might still work
+
+                mid_len = max_L - _pp
+                if mid_len < 0:
+                    continue      # pair too close to fit even a 2p-length pattern
+
+                # ── zero-length middle (max_L == 2p exactly) ─────────────────
+                if mid_len == 0:
+                    # Only a prefix+suffix exists; suffix is lst[i+p : i+2p]
+                    if _pp > best_len and lst[i + _p : i + _pp] == lst[j + _p : j + _pp]:
+                        best_len   = _pp
+                        best_start = i
+                    continue
+
+                # ── middle mismatch array + cumulative sum (all C-level) ──────
+                #   diff[k]  = (lst[i+p+k] != lst[j+p+k])   k = 0 … mid_len-1
+                #   cum[k]   = Σ diff[0:k]                   k = 0 … mid_len
+                ip = i + _p
+                jp = j + _p
+                diff = list(map(_ne, lst[ip : ip + mid_len], lst[jp : jp + mid_len]))
+                cum  = list(_ac(diff, initial=0))   # len = mid_len + 1
+
+                # ── binary search: largest middle length ≤ threshold errors ───
+                #   cum is non-decreasing; bisect_right gives the insertion point
+                #   for threshold+1, so -1 gives the last index ≤ threshold.
+                k = _br(cum, threshold) - 1         # k ∈ [0, mid_len]
+                cand_L = k + _pp                    # = k + 2p
+                if cand_L <= best_len:
+                    continue
+
+                # ── suffix scan (typically 1-2 iterations) ───────────────────
+                # For any L ≤ cand_L:  cum[L-2p] ≤ cum[k] ≤ threshold  ✓
+                # Only the exact suffix match needs to be verified.
+                if not _p:
+                    # p == 0 → no suffix constraint; k is the answer directly.
+                    best_len   = cand_L             # = k when p=0
+                    best_start = i
+                else:
+                    for L in range(cand_L, best_len, -1):
+                        if L < _pp:
+                            break                   # below minimum pattern length
+                        lp = L - _p
+                        if lst[i + lp : i + L] == lst[j + lp : j + L]:
+                            best_len   = L
+                            best_start = i
+                            break
+
+    return lst[best_start : best_start + best_len]
+
+###################################################################################
+
 def find_chunk_indexes(original_list, chunk, ignore_index=-1):
+    
+    results = []
+    chunk_length = len(chunk)
+    i = 0
 
-  chunk_length = len(chunk)
+    while i <= len(original_list) - chunk_length:
+        chunk_index = 0
+        start_index = ignore_index
 
-  for i in range(len(original_list) - chunk_length + 1):
+        for j in range(i, len(original_list)):
+            if original_list[j] == chunk[chunk_index]:
 
-    chunk_index = 0
-    start_index = ignore_index
+                if start_index == ignore_index:
+                    start_index = j
 
-    for j in range(i, len(original_list)):
-      if original_list[j] == chunk[chunk_index]:
+                chunk_index += 1
 
-        if start_index == ignore_index:
-          start_index = j
+                if chunk_index == chunk_length:
+                    results.append([start_index, j])
+                    i = j + 1
+                    break
 
-        chunk_index += 1
+            elif original_list[j] != ignore_index:
+                i += 1
+                break
+        else:
+            i += 1
 
-        if chunk_index == chunk_length:
-          return [start_index, j]
-
-      elif original_list[j] != ignore_index:
-        break
-
-  return None
+    return results if results else None
 
 ###################################################################################
 
 def escore_notes_lrno_pattern_fast(escore_notes, 
                                    channels_index=3, 
-                                   pitches_index=4, 
-                                   zero_start_time=True
+                                   pitches_index=4,
+                                   patches_index=6,
+                                   patches_list=[],
+                                   zero_start_time=True,
+                                   use_full_chords=True,
+                                   use_dtimes=True,
+                                   skip_pitches=False,
+                                   fuzzy_matching=False,
+                                   fuzzy_thres=5,
+                                   fuzzy_ps_len=3                                   
                                   ):
+    
+  if use_full_chords:
+      CHORDS = ALL_CHORDS_FULL
+      
+  else:
+      CHORDS = ALL_CHORDS_SORTED
+
+  if not patches_list:
+      patches_list = sorted(range(128))
 
   cscore = chordify_score([1000, escore_notes])
 
   score_chords = []
-
+  pc = cscore[0]
   for c in cscore:
+   dtime = c[0][1]-pc[0][1]
+   if use_dtimes:
+       pitches = sorted(set([e[pitches_index] for e in c if e[channels_index] != 9 and e[6] in patches_list]))
+       if skip_pitches:
+           
+           if len(pitches) > 1:
+               score_chords.append(dtime)
+               pc = c
 
-    tchord = sorted(set([e[pitches_index] % 12 for e in c if e[channels_index] != 9]))
+           else:
+               score_chords.append(-1)
 
-    chord_tok = -1
+       else:
+           if pitches:
+               score_chords.append(dtime)
+               pc = c
 
-    if tchord:
+           else:
+               score_chords.append(-1)
 
-      if tchord not in ALL_CHORDS_FULL:
-        tchord = check_and_fix_tones_chord(tchord)
-
-      chord_tok = ALL_CHORDS_FULL.index(tchord)
-
-    score_chords.append(chord_tok)
+   else:
+    
+        pitches = sorted(set([e[pitches_index] for e in c if e[channels_index] != 9 and e[6] in patches_list]))
+        
+        chord_tok = -1
+        tchord = []
+        
+        if (skip_pitches and len(pitches) > 1) or not skip_pitches:
+        
+            tchord = sorted(set([p % 12 for p in pitches]))
+    
+        if tchord:
+    
+          if tchord not in CHORDS:
+            tchord = check_and_fix_tones_chord(tchord,
+                                               use_full_chords=use_full_chords
+                                               )
+    
+          chord_tok = CHORDS.index(tchord)
+    
+        score_chords.append(chord_tok)
 
   schords = [c for c in score_chords if c != -1]
-
-  lrno = find_lrno_pattern_fast(schords)
+  
+  if fuzzy_matching:
+      lrno = find_fuzzy_lrno_pattern_fast(schords,
+                                          fuzzy_thres,
+                                          fuzzy_ps_len
+                                          )
+  else:
+      lrno = find_lrno_pattern_fast(schords)
 
   if lrno:
 
-    sidx, eidx = find_chunk_indexes(score_chords, lrno)
+    sidx, eidx = find_chunk_indexes(score_chords, lrno)[0]
 
     escore_notes_lrno_pattern = flatten(cscore[sidx:eidx+1])
 
@@ -9876,12 +10115,12 @@ def escore_notes_to_text_description(escore_notes,
 
     #==============================================================================
         
-    feat_dict['rythm'] = None
+    feat_dict['rhythm'] = None
     feat_dict['tempo'] = None
     feat_dict['tone'] = None
     feat_dict['dynamics'] = None
 
-    feat_dict_vals['rythm'] = -1
+    feat_dict_vals['rhythm'] = -1
     feat_dict_vals['tempo'] = -1
     feat_dict_vals['tone'] = -1
     feat_dict_vals['dynamics'] = -1
@@ -9891,15 +10130,15 @@ def escore_notes_to_text_description(escore_notes,
         escore_averages = escore_notes_averages(escore_notes, return_ptcs_and_vels=True)
 
         if escore_averages[0] < (128 / timings_divider):
-            rythm = 'fast'
+            rhythm = 'fast'
             ryv = 0
         
         elif (128 / timings_divider) <= escore_averages[0] <= (192 / timings_divider):
-            rythm = 'average'
+            rhythm = 'average'
             ryv = 1
         
         elif escore_averages[0] > (192 / timings_divider):
-            rythm = 'slow'
+            rhythm = 'slow'
             ryv = 2
         
         if escore_averages[1] < (256 / timings_divider):
@@ -9938,12 +10177,12 @@ def escore_notes_to_text_description(escore_notes,
             dynamics = 'loud'
             dyn = 2
             
-        feat_dict['rythm'] = rythm.title()
+        feat_dict['rhythm'] = rhythm.title()
         feat_dict['tempo'] = tempo.title()
         feat_dict['tone'] = tone.title()
         feat_dict['dynamics'] = dynamics.title()
         
-        feat_dict_vals['rythm'] = ryv
+        feat_dict_vals['rhythm'] = ryv
         feat_dict_vals['tempo'] = tev
         feat_dict_vals['tone'] = tov
         feat_dict_vals['dynamics'] = dyn
@@ -10037,7 +10276,7 @@ def escore_notes_to_text_description(escore_notes,
         else:
             description += 'TThis drum track has '
             
-        description += rythm + ' rythm, '
+        description += rhythm + ' rhythm, '
         description += tempo + ' tempo, '
         description += tone + ' tone and '
         description += dynamics + ' dynamics.'
@@ -11562,26 +11801,130 @@ def is_mostly_wide_peaks_and_valleys(values,
 ###################################################################################
 
 def system_memory_utilization(return_dict=False):
+    """
+    Cross‑platform memory utilization without psutil.
+    Works on Linux, macOS, Windows.
+    """
 
-    if return_dict:
-        return dict(psutil.virtual_memory()._asdict())
+    system = platform.system()
+
+    if system == "Linux":
+        # /proc/meminfo is the most reliable
+        meminfo = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, val = line.split(":")
+                meminfo[key.strip()] = int(val.strip().split()[0]) * 1024  # kB → bytes
+
+        total = meminfo["MemTotal"]
+        available = meminfo.get("MemAvailable", meminfo["MemFree"])
+        used = total - available
+        percent = (used / total) * 100
+
+    elif system == "Darwin":  # macOS
+        import subprocess, re
+        vm = subprocess.check_output(["vm_stat"]).decode()
+        pages = {}
+        for line in vm.split("\n"):
+            m = re.match(r"(.+):\s+(\d+)\.", line)
+            if m:
+                pages[m.group(1)] = int(m.group(2))
+
+        page_size = int(subprocess.check_output(["sysctl", "-n", "hw.pagesize"]).decode())
+        total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"]).decode())
+        free = (pages["Pages free"] + pages["Pages inactive"]) * page_size
+        used = total - free
+        percent = (used / total) * 100
+
+    elif system == "Windows":
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+            ]
+
+        mem = MEMORYSTATUSEX()
+        mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))
+
+        total = mem.ullTotalPhys
+        available = mem.ullAvailPhys
+        used = total - available
+        percent = mem.dwMemoryLoad
 
     else:
-        print('RAM memory % used:', psutil.virtual_memory()[2])
-        print('RAM Used (GB):', psutil.virtual_memory()[3]/(1024**3))
+        raise NotImplementedError(f"Unsupported OS: {system}")
+
+    if return_dict:
+        return {
+            "total_bytes": total,
+            "used_bytes": used,
+            "available_bytes": available,
+            "percent_used": percent,
+        }
+
+    print(f"RAM memory % used: {percent:.2f}")
+    print(f"RAM Used (GB): {used / (1024**3):.2f}")
 
 ###################################################################################
 
 def system_cpus_utilization(return_dict=False):
+    """
+    Cross‑platform CPU utilization without psutil.
+    Uses 1‑second sampling like psutil.cpu_percent(interval=1).
+    """
 
-    if return_dict:
-        return {'num_cpus': psutil.cpu_count(),
-                'cpus_util': psutil.cpu_percent()
-                }
+    system = platform.system()
+    num_cpus = os.cpu_count()
+
+    if system == "Linux":
+        def read_cpu():
+            with open("/proc/stat") as f:
+                fields = f.readline().split()[1:]
+                return list(map(int, fields))
+
+        t1 = read_cpu()
+        time.sleep(1)
+        t2 = read_cpu()
+
+        idle1, idle2 = t1[3], t2[3]
+        total1, total2 = sum(t1), sum(t2)
+
+        idle_delta = idle2 - idle1
+        total_delta = total2 - total1
+
+        cpu_percent = 100 * (1 - idle_delta / total_delta)
+
+    elif system == "Darwin":  # macOS
+        def read_cpu():
+            out = subprocess.check_output(["ps", "-A", "-o", "%cpu"]).decode().split()
+            vals = [float(x) for x in out[1:]]
+            return sum(vals)
+
+        cpu1 = read_cpu()
+        time.sleep(1)
+        cpu2 = read_cpu()
+        cpu_percent = min(cpu2 - cpu1, 100.0)
+
+    elif system == "Windows":
+        cmd = ['typeperf', '"\\Processor(_Total)\\% Processor Time"', '-sc', '1']
+        out = subprocess.check_output(cmd).decode()
+        # Last line contains the value
+        cpu_percent = float(out.strip().split("\n")[-1].split(",")[-1].replace('"', ""))
 
     else:
-        print('Number of CPUs:', psutil.cpu_count())
-        print('CPUs utilization:', psutil.cpu_percent())
+        raise NotImplementedError(f"Unsupported OS: {system}")
+
+    if return_dict:
+        return {
+            "num_cpus": num_cpus,
+            "cpus_util": cpu_percent,
+        }
+
+    print("Number of CPUs:", num_cpus)
+    print("CPUs utilization:", cpu_percent)
 
 ###################################################################################
 
@@ -13315,6 +13658,136 @@ def add_expressive_melody_to_enhanced_score_notes(escore_notes,
         return song_f
 
 ###################################################################################
+
+def add_smooth_expressive_melody_to_enhanced_score_notes(escore_notes,
+                                                         melody_start_chord=0,
+                                                         melody_prime_pitch=60,
+                                                         melody_step=1,
+                                                         melody_channel=3,
+                                                         melody_patch=40,
+                                                         melody_notes_max_duration=255,
+                                                         melody_notes_min_duration=6,
+                                                         melody_last_note_dur=128,
+                                                         suppress_trills=True,
+                                                         melody_smooth_leap=7,
+                                                         melody_clip_max_min_durs=[],
+                                                         melody_max_velocity=120,
+                                                         acc_max_velocity=90,
+                                                         return_melody=False
+                                                        ):
+
+    score = copy.deepcopy(escore_notes)
+    adjust_score_velocities(score, acc_max_velocity)
+    cscore = chordify_score([1000, score])
+
+    candidate_indices = [i for i in range(melody_start_chord, len(cscore))
+                         if (i - melody_start_chord) % melody_step == 0]
+
+    kept_indices = []
+    
+    for i in candidate_indices:
+        
+        t = cscore[i][0][1]
+        
+        if not kept_indices:
+            kept_indices.append(i)
+            
+        else:
+            last_t = cscore[kept_indices[-1]][0][1]
+            
+            if t - last_t >= melody_notes_min_duration:
+                kept_indices.append(i)
+                
+    melody_pitches = [melody_prime_pitch]
+    
+    for idx in kept_indices:
+        chord = cscore[idx]
+        pitches = [e[4] for e in chord if e[3] != 9]
+        
+        if not pitches:
+            melody_pitches.append(melody_pitches[-1])
+            continue
+
+        candidates = mult_pitches(pitches)
+        prev = melody_pitches[-1]
+
+        if suppress_trills and len(melody_pitches) >= 2:
+            prev2 = melody_pitches[-2]
+
+            sorted_candidates = sorted(candidates, key=lambda p: abs(p - prev))
+            closest = sorted_candidates[0]
+
+            if prev2 != prev and closest == prev2:
+
+                alt_candidates = [p for p in candidates
+                                  if p != prev2 and abs(p - prev) <= melody_smooth_leap]
+                
+                if alt_candidates:
+                    chosen = min(alt_candidates, key=lambda p: abs(p - prev))
+                    
+                else:
+                    chosen = closest
+                    
+            else:
+                chosen = closest
+                
+        else:
+            chosen = min(candidates, key=lambda p: abs(p - prev))
+
+        melody_pitches.append(chosen)
+
+    melody_pitches = melody_pitches[1:]
+    
+    mel_f = []
+    
+    for j, i in enumerate(kept_indices):
+        
+        t = cscore[i][0][1]
+
+        if j < len(kept_indices) - 1:
+            next_t = cscore[kept_indices[j+1]][0][1]
+            dur = min(next_t - t, melody_notes_max_duration)
+            
+        else:
+            dur = melody_last_note_dur
+
+        pitch = melody_pitches[j]
+        
+        note_num = 60 + (pitch % 24)
+        velocity = 100 + ((pitch % 12) * 2)
+
+        mel_f.append(['note',
+                      t,
+                      dur,
+                      melody_channel,
+                      note_num,
+                      velocity,
+                      melody_patch])
+
+    song_f = []
+    
+    for c in cscore:
+        song_f.extend(c)
+
+    if len(melody_clip_max_min_durs) == 2:
+        for e in mel_f:
+            if e[2] >= melody_clip_max_min_durs[0]:
+                e[2] = melody_clip_max_min_durs[1]
+
+    adjust_score_velocities(mel_f, melody_max_velocity)
+    merged_melody = merge_melody_notes(mel_f,
+                                       max_dur=melody_notes_max_duration,
+                                       last_dur=melody_last_note_dur)
+
+    song_f = sorted(merged_melody + song_f, key=lambda x: x[1])
+
+    if return_melody:
+        return mel_f
+        
+    else:
+        return song_f
+    
+###################################################################################
     
 def list_md5_hash(ints_list):
     
@@ -15031,6 +15504,3463 @@ def chords_to_escore_notes(chords,
         dtime += chords_dtime
 
     return score
+
+###################################################################################
+
+def _median(vals: List[float]) -> float:
+    return statistics.median(vals) if vals else 0.0
+
+###################################################################################
+
+def _mad(vals: List[float], center: Optional[float] = None) -> float:
+    if not vals:
+        return 0.0
+    if center is None:
+        center = _median(vals)
+    return _median([abs(x - center) for x in vals])
+
+###################################################################################
+
+def _rep(vals: List[float], method: str) -> float:
+    if method == "mean":
+        return statistics.mean(vals)
+    if method == "mode":
+        try:
+            return statistics.mode(vals)
+        except statistics.StatisticsError:
+            return statistics.median(vals)
+    return statistics.median(vals)
+
+###################################################################################
+
+def _round_int(v: float, mode: Optional[str]) -> int:
+    if mode is None or mode == "round":
+        return int(round(v))
+    if mode == "ceil":
+        return int(math.ceil(v))
+    if mode == "floor":
+        return int(math.floor(v))
+    raise ValueError("Unknown round mode")
+
+###################################################################################
+
+def even_out_values_in_list_of_lists(
+    data: List[List[float]],
+    rep_method: str = "median",
+    z_thresh: float = 3.0,
+    local_ratio_thresh: float = 3.0,
+    gap_ratio_thresh: float = 0.45,
+    merge_factor: float = 1.0,
+    span_tol_factor: float = 1.0,
+    min_cluster_size: int = 1,
+    round_mode: Optional[str] = "round",
+    max_k_for_kmeans: int = 5
+    ) -> List[List[int]]:
+
+    # small deterministic 1D kmeans for fallback
+    def _kmeans_1d(values, k, rng_seed=42, max_iter=100):
+        n = len(values)
+        if k <= 1 or k >= n:
+            return [statistics.mean(values)]*k if k>0 else [], list(range(n))
+        rng = random.Random(rng_seed)
+        centroids = [rng.choice(values)]
+        for _ in range(1, k):
+            d2 = [min((v - c)**2 for c in centroids) for v in values]
+            total = sum(d2)
+            if total == 0:
+                centroids.append(rng.choice(values))
+                continue
+            r = rng.random() * total
+            cum = 0.0
+            for v, w in zip(values, d2):
+                cum += w
+                if cum >= r:
+                    centroids.append(v)
+                    break
+        labels = [0]*n
+        for _ in range(max_iter):
+            changed = False
+            for i, v in enumerate(values):
+                best = min(range(k), key=lambda j: abs(v - centroids[j]))
+                if labels[i] != best:
+                    labels[i] = best
+                    changed = True
+            new_centroids = []
+            for j in range(k):
+                members = [v for v, lab in zip(values, labels) if lab == j]
+                new_centroids.append(sum(members)/len(members) if members else rng.choice(values))
+            if all(abs(a-b) < 1e-12 for a,b in zip(centroids, new_centroids)):
+                break
+            centroids = new_centroids
+            if not changed:
+                break
+        return centroids, labels
+
+    def _silhouette_1d(values, labels):
+        n = len(values)
+        if n <= 1:
+            return 0.0
+        clusters = {}
+        for v, lab in zip(values, labels):
+            clusters.setdefault(lab, []).append(v)
+        if len(clusters) == 1:
+            return 0.0
+        total_s = 0.0
+        for i, v in enumerate(values):
+            lab = labels[i]
+            own = clusters[lab]
+            a = 0.0
+            if len(own) > 1:
+                a = sum(abs(v - u) for u in own if u is not v) / (len(own)-1)
+            b = float("inf")
+            for other_lab, members in clusters.items():
+                if other_lab == lab:
+                    continue
+                dist = sum(abs(v - u) for u in members) / len(members)
+                if dist < b:
+                    b = dist
+            denom = max(a, b)
+            s = 0.0 if denom == 0 else (b - a) / denom
+            total_s += s
+        return total_s / n
+
+    out: List[List[int]] = []
+
+    for row in data:
+        if not row:
+            out.append([])
+            continue
+        if len(row) == 1:
+            out.append([_round_int(float(row[0]), round_mode)])
+            continue
+
+        indexed = sorted(((float(v), idx) for idx, v in enumerate(row)), key=lambda x: x[0])
+        sorted_vals = [v for v, _ in indexed]
+        n = len(sorted_vals)
+
+        if all(v == sorted_vals[0] for v in sorted_vals):
+            rep_int = _round_int(_rep(sorted_vals, rep_method), round_mode)
+            out.append([rep_int]*n)
+            continue
+
+        # adjacent diffs and robust stats
+        diffs = [sorted_vals[i+1] - sorted_vals[i] for i in range(n-1)]
+        med = _median(diffs)
+        mad = _mad(diffs, med)
+        z_scores = [(d - med) / (mad + 1e-12) for d in diffs]
+
+        # initial cut heuristics
+        cuts = set(idx for idx, z in enumerate(z_scores) if z > z_thresh)
+        if diffs:
+            # percentile fallback
+            k_idx = max(0, min(len(diffs)-1, int(round(len(diffs)*0.9)) - 1))
+            pcut = sorted(diffs)[k_idx]
+            cuts.update(idx for idx, d in enumerate(diffs) if d >= pcut and d > 0)
+            # global gap ratio
+            maxd = max(diffs)
+            cuts.update(idx for idx, d in enumerate(diffs) if d >= maxd * gap_ratio_thresh and d > 0)
+        # local relative gap
+        for i, d in enumerate(diffs):
+            neigh = []
+            for j in range(i-2, i+3):
+                if j != i and 0 <= j < len(diffs):
+                    neigh.append(diffs[j])
+            if not neigh:
+                continue
+            local_med = _median(neigh)
+            denom = local_med if local_med > 1e-12 else (med if med > 1e-12 else 1.0)
+            if d / denom >= local_ratio_thresh and d > 0:
+                cuts.add(i)
+
+        # build clusters from cuts
+        if not cuts:
+            clusters = [sorted_vals[:]]
+        else:
+            clusters = []
+            start = 0
+            for i in range(len(diffs)):
+                if i in cuts:
+                    clusters.append(sorted_vals[start:i+1])
+                    start = i+1
+            clusters.append(sorted_vals[start:])
+
+        # --- Merge Logic (Extracted) ---
+        def _do_merges(clusters_in):
+            # compute representatives and cluster spans
+            reps = [_rep(cl, rep_method) for cl in clusters_in]
+            spans = [ (max(cl)-min(cl)) if len(cl)>1 else 0.0 for cl in clusters_in ]
+
+            # merge-adjacent rule
+            row_mad = _mad(sorted_vals, _median(sorted_vals))
+            merge_tol = max(1.0, merge_factor * row_mad)
+            
+            merged = []
+            merged_reps = []
+            merged_spans = []
+            k = 0
+            while k < len(clusters_in):
+                cur = clusters_in[k][:]
+                cur_rep = reps[k]
+                cur_span = spans[k]
+                # Merge adjacent clusters if reps are close
+                while k+1 < len(clusters_in) and abs(cur_rep - reps[k+1]) <= merge_tol:
+                    cur += clusters_in[k+1]
+                    cur_rep = _rep(cur, rep_method)
+                    cur_span = max(cur_span, spans[k+1], max(cur)-min(cur))
+                    k += 1
+                merged.append(cur)
+                merged_reps.append(cur_rep)
+                merged_spans.append(cur_span)
+                k += 1
+            
+            current_clusters = merged
+            current_reps = merged_reps
+            current_spans = merged_spans
+
+            # span-based merge
+            span_tol = max(1.0, span_tol_factor * row_mad)
+            if len(current_clusters) > 1:
+                i = 0
+                while i < len(current_clusters):
+                    if len(current_clusters[i]) < min_cluster_size or current_spans[i] <= span_tol:
+                        left = i-1 if i-1 >= 0 else None
+                        right = i+1 if i+1 < len(current_clusters) else None
+
+                        merged_flag = False
+                        # Try merge right
+                        if left is None and right is not None:
+                            if abs(current_reps[i] - current_reps[right]) <= merge_tol:
+                                current_clusters[right] = current_clusters[i] + current_clusters[right]
+                                del current_clusters[i]
+                                current_reps = [_rep(cl, rep_method) for cl in current_clusters]
+                                current_spans = [ (max(cl)-min(cl)) if len(cl)>1 else 0.0 for cl in current_clusters]
+                                merged_flag = True
+                        # Try merge left
+                        elif right is None and left is not None:
+                            if abs(current_reps[i] - current_reps[left]) <= merge_tol:
+                                current_clusters[left] = current_clusters[left] + current_clusters[i]
+                                del current_clusters[i]
+                                current_reps = [_rep(cl, rep_method) for cl in current_clusters]
+                                current_spans = [ (max(cl)-min(cl)) if len(cl)>1 else 0.0 for cl in current_clusters]
+                                merged_flag = True
+                                i -= 1 # Adjust index since we removed an element before i
+                        # Try merge closest neighbor
+                        elif left is not None and right is not None:
+                            dist_left = abs(current_reps[i] - current_reps[left])
+                            dist_right = abs(current_reps[i] - current_reps[right])
+                            
+                            target = -1
+                            if dist_left <= dist_right:
+                                if dist_left <= merge_tol:
+                                    target = left
+                            else:
+                                if dist_right <= merge_tol:
+                                    target = right
+                            
+                            if target != -1:
+                                if target == left:
+                                    current_clusters[left] = current_clusters[left] + current_clusters[i]
+                                    del current_clusters[i]
+                                    merged_flag = True
+                                    i -= 1
+                                else: # target == right
+                                    current_clusters[right] = current_clusters[i] + current_clusters[right]
+                                    del current_clusters[i]
+                                    merged_flag = True
+                                
+                                current_reps = [_rep(cl, rep_method) for cl in current_clusters]
+                                current_spans = [ (max(cl)-min(cl)) if len(cl)>1 else 0.0 for cl in current_clusters]
+
+                        if not merged_flag:
+                            i += 1
+                    else:
+                        i += 1
+            return current_clusters
+
+        # Apply merges to initial heuristic clusters
+        clusters = _do_merges(clusters)
+
+        # final fallback: kmeans
+        # Check condition again because merges might have reduced cluster count
+        if len(clusters) <= 2 and n >= 4:
+            best_score = -1.0
+            best_labels = None
+            best_k = 1
+            max_k = min(max_k_for_kmeans, n)
+            for k_try in range(1, max_k+1):
+                _, labels = _kmeans_1d(sorted_vals, k_try)
+                score = 0.0 if k_try==1 else _silhouette_1d(sorted_vals, labels)
+                if score > best_score + 1e-12:
+                    best_score = score
+                    best_labels = labels[:]
+                    best_k = k_try
+            
+            if best_labels is not None and best_k > 1 and best_score > 0:
+                clusters_k = []
+                cur_lab = best_labels[0]
+                cur_cl = [sorted_vals[0]]
+                for v, lab in zip(sorted_vals[1:], best_labels[1:]):
+                    if lab == cur_lab:
+                        cur_cl.append(v)
+                    else:
+                        clusters_k.append(cur_cl)
+                        cur_cl = [v]
+                        cur_lab = lab
+                clusters_k.append(cur_cl)
+                
+                # Only replace if Kmeans found more clusters than we currently have
+                # AND crucially, run the merge logic on these new clusters
+                if len(clusters_k) > len(clusters):
+                    clusters = _do_merges(clusters_k)
+
+        # compute final reps and round to ints, map back to original order
+        final_reps = [_rep(cl, rep_method) for cl in clusters]
+        rep_values_sorted = []
+        for rep, cl in zip(final_reps, clusters):
+            rep_int = _round_int(rep, round_mode)
+            rep_values_sorted.extend([rep_int] * len(cl))
+
+        row_ints = [0]*n
+        for (_, orig_idx), rep_int in zip(indexed, rep_values_sorted):
+            row_ints[orig_idx] = rep_int
+
+        out.append(row_ints)
+
+    return out
+
+###################################################################################
+
+def even_out_durations_in_escore_notes(escore_notes, min_notes_gap=0):
+    
+    escore_notes = fix_escore_notes_durations(escore_notes,
+                                              min_notes_gap=min_notes_gap
+                                             )
+
+    score = [e for e in escore_notes if e[3] != 9]
+    drums = [e for e in escore_notes if e[3] == 9]
+    
+    output_score = []
+    
+    if score:
+    
+        cscore = chordify_score([1000, score])
+
+        durs = []
+
+        for c in cscore:
+            durs.append([e[2] for e in c])
+
+        ndurs = even_out_values_in_list_of_lists(durs)
+
+        for i, c in enumerate(cscore):
+            cc = copy.deepcopy(c)
+            ndur = ndurs[i]
+        
+            for j, e in enumerate(cc):
+                e[2] = ndur[j]
+        
+            output_score.extend(cc)
+
+    return sorted(output_score + drums, key=lambda x: (x[1], -x[4], x[6]))
+
+###################################################################################
+
+def even_out_velocities_in_escore_notes(escore_notes, use_pitches=False):
+
+    score = [e for e in escore_notes if e[3] != 9]
+    drums = [e for e in escore_notes if e[3] == 9]
+    
+    output_score = []
+    
+    if score:
+        cscore = chordify_score([1000, score])
+
+        vels = []
+
+        for c in cscore:
+            if use_pitches:
+                vels.append([max(40, e[4]) for e in c])
+
+            else:
+                vels.append([e[5] for e in c])
+
+        nvels = even_out_values_in_list_of_lists(vels)
+
+        for i, c in enumerate(cscore):
+            cc = copy.deepcopy(c)
+            nvel = nvels[i]
+        
+            for j, e in enumerate(cc):
+                e[5] = nvel[j]
+        
+            output_score.extend(cc)
+
+    return sorted(output_score + drums, key=lambda x: (x[1], -x[4], x[6]))
+
+###################################################################################
+
+# Most probable MIDI velocity per GM instrument (0-127) + drums (128)
+INSTRUMENTS_VELOCITIES_MAP = {
+    
+    # 0–7 Pianos
+    0: 82, 1: 82, 2: 84, 3: 84, 4: 86, 5: 86, 6: 88, 7: 88,
+
+    # 8–15 Chromatic Percussion
+    8: 78, 9: 78, 10: 80, 11: 80, 12: 82, 13: 82, 14: 84, 15: 84,
+
+    # 16–23 Organs
+    16: 76, 17: 76, 18: 78, 19: 78, 20: 78, 21: 78, 22: 80, 23: 80,
+
+    # 24–31 Guitars
+    24: 80, 25: 80, 26: 82, 27: 82, 28: 84, 29: 84, 30: 86, 31: 86,
+
+    # 32–39 Basses
+    32: 84, 33: 84, 34: 86, 35: 86, 36: 88, 37: 88, 38: 90, 39: 90,
+
+    # 40–47 Strings
+    40: 74, 41: 74, 42: 74, 43: 74, 44: 76, 45: 76, 46: 76, 47: 76,
+
+    # 48–55 Ensemble
+    48: 76, 49: 76, 50: 78, 51: 78, 52: 78, 53: 78, 54: 80, 55: 80,
+
+    # 56–63 Brass
+    56: 86, 57: 86, 58: 88, 59: 88, 60: 90, 61: 90, 62: 92, 63: 92,
+
+    # 64–71 Reed
+    64: 74, 65: 74, 66: 76, 67: 76, 68: 76, 69: 76, 70: 78, 71: 78,
+
+    # 72–79 Pipe
+    72: 72, 73: 72, 74: 74, 75: 74, 76: 74, 77: 74, 78: 76, 79: 76,
+
+    # 80–87 Synth Lead
+    80: 88, 81: 88, 82: 90, 83: 90, 84: 90, 85: 90, 86: 92, 87: 92,
+
+    # 88–95 Synth Pad
+    88: 70, 89: 70, 90: 72, 91: 72, 92: 74, 93: 74, 94: 74, 95: 74,
+
+    # 96–103 Synth Effects
+    96: 76, 97: 76, 98: 78, 99: 78, 100: 80, 101: 80, 102: 82, 103: 82,
+
+    # 104–111 Ethnic
+    104: 74, 105: 74, 106: 76, 107: 76, 108: 76, 109: 76, 110: 78, 111: 78,
+
+    # 112–119 Percussive
+    112: 86, 113: 86, 114: 88, 115: 88, 116: 88, 117: 88, 118: 90, 119: 90,
+
+    # 120–127 Sound Effects
+    120: 72, 121: 72, 122: 74, 123: 74, 124: 74, 125: 74, 126: 76, 127: 76,
+
+    # 128 Drums (GM Channel 10)
+    128: 92,
+}
+
+###################################################################################
+
+def min_max_cum_low_perc_value(
+    values: List[Tuple[int, int]],
+    percentile: float = 10.0
+    ) -> Optional[int]:
+    
+    """
+    pairs: list of (value, count)
+    percentile: lower percentile of the TOTAL count (e.g., 10.0 for lower 10%)
+
+    Returns:
+      - the minimum value from the cumulative lower-percentile set that is
+        strictly greater than the maximum value among the non-included values;
+      - if none exists, returns the minimum value among the first non-included
+        count group (the next item(s) immediately after the cumulative cutoff).
+      - returns None for empty input or zero total count.
+    """
+    
+    pairs = Counter(values).most_common()
+
+    total = sum(c for _, c in pairs)
+    if total <= 0:
+        return None
+
+    threshold = (percentile / 100.0) * total
+
+    # Sort by count ascending; tie-break by value ascending for determinism
+    sorted_pairs = sorted(pairs, key=lambda vc: (vc[1], vc[0]))
+
+    # Build cumulative lower-percentile set
+    cumulative = 0
+    included_values = []
+    included_counts = []
+    cutoff_index = None
+    for i, (value, count) in enumerate(sorted_pairs):
+        cumulative += count
+        included_values.append(value)
+        included_counts.append(count)
+        if cumulative >= threshold:
+            cutoff_index = i
+            break
+
+    # If threshold never reached, include all
+    if cutoff_index is None:
+        cutoff_index = len(sorted_pairs) - 1
+
+    # Non-included are the items after cutoff_index
+    non_included_pairs = sorted_pairs[cutoff_index + 1 :]
+
+    # If there are no non-included items, nothing to compare against
+    if not non_included_pairs:
+        return None
+
+    non_included_values = [v for v, _ in non_included_pairs]
+    max_non = max(non_included_values)
+
+    # Candidates among included values strictly greater than max_non
+    candidates = [v for v in included_values if v > max_non]
+    if candidates:
+        return min(candidates)
+
+    # Fallback: return the minimum value among the first non-included count group
+    # Find the smallest count among non-included (this is the count of the first non-included item)
+    first_non_count = non_included_pairs[0][1]
+    first_group_values = [v for v, c in non_included_pairs if c == first_non_count]
+    
+    return min(first_group_values) if first_group_values else None
+
+###################################################################################
+
+def _auto_clusters(values, sensitivity=1.0, min_gap=0.0,
+                   min_cluster_size=1, debug=False):
+    
+    """
+    Auto-cluster numeric values by weighted gaps.
+
+    Gaps are scaled by the combined frequency of the two adjacent values:
+        weighted_gap = (b - a) / (freq[a] + freq[b])
+
+    Smaller weighted_gap -> less likely to split.
+    Larger weighted_gap -> more likely to split.
+
+    sensitivity multiplies the robust weighted-gap statistic (Q1) to form
+    the split threshold.
+    """
+    
+    if not values:
+        return []
+
+    freq = Counter(values)
+    uniq = sorted(set(values))
+    if len(uniq) <= 1:
+        return [uniq]
+
+    # compute weighted gaps between adjacent unique values
+    weighted_gaps = []
+    pairs = list(zip(uniq, uniq[1:]))
+    for a, b in pairs:
+        gap = b - a
+        combined = freq.get(a, 0) + freq.get(b, 0)
+        if combined <= 0:
+            combined = 1
+        weighted_gaps.append(gap / combined)
+
+    # --- FIX: robust lower-percentile (Q1) weighted-gap statistic ---
+    if weighted_gaps:
+        sorted_wg = sorted(weighted_gaps)
+        q1_index = max(0, int(0.25 * (len(sorted_wg) - 1)))
+        med_wgap = sorted_wg[q1_index]
+    else:
+        med_wgap = 0.0
+
+    # normalize sensitivity
+    sensitivity = 1.0 if sensitivity is None else float(sensitivity)
+    eps = 1e-12
+    if sensitivity <= 0:
+        sensitivity = eps
+
+    # threshold in weighted-gap units
+    threshold = med_wgap * sensitivity
+
+    # respect explicit min_gap by converting to weighted units
+    max_combined = max((freq.get(a, 0) + freq.get(b, 0)) or 1
+                       for a, b in pairs) if pairs else 1
+    min_wgap = float(min_gap) / max_combined
+    threshold = max(threshold, min_wgap)
+
+    clusters = []
+    current = [uniq[0]]
+    for (a, b), wgap in zip(pairs, weighted_gaps):
+        if wgap > threshold:
+            clusters.append(current)
+            current = [b]
+        else:
+            current.append(b)
+    clusters.append(current)
+
+    # merge tiny clusters into nearest neighbor by gap
+    if min_cluster_size > 1 and len(clusters) > 1:
+        i = 0
+        while i < len(clusters):
+            c = clusters[i]
+            if len(c) < min_cluster_size:
+                if i == 0:
+                    clusters[i + 1] = c + clusters[i + 1]
+                    del clusters[i]
+                elif i == len(clusters) - 1:
+                    clusters[i - 1].extend(c)
+                    del clusters[i]
+                    i -= 1
+                else:
+                    left_gap = c[0] - clusters[i - 1][-1]
+                    right_gap = clusters[i + 1][0] - c[-1]
+                    if left_gap <= right_gap:
+                        clusters[i - 1].extend(c)
+                        del clusters[i]
+                        i -= 1
+                    else:
+                        clusters[i + 1] = c + clusters[i + 1]
+                        del clusters[i]
+            else:
+                i += 1
+
+    if debug:
+        print("auto_clusters -> uniq:", uniq)
+        print("auto_clusters -> weighted_gaps:", weighted_gaps)
+        print("auto_clusters -> threshold:", threshold)
+        print("auto_clusters -> clusters:", clusters)
+
+    return clusters
+
+###################################################################################
+
+def _choose_rep_from_cluster(cluster_values, global_freq,
+                             prefer='median', debug=False):
+    if not cluster_values:
+        return None
+
+    local_counts = {v: global_freq.get(v, 0) for v in cluster_values}
+
+    if prefer == 'local_mode':
+        rep = max(cluster_values, key=lambda v: (local_counts.get(v, 0), -v))
+        if debug:
+            print("local_mode cluster:", cluster_values,
+                  "local_counts:", local_counts, "rep:", rep)
+        return rep
+
+    if prefer == 'global_mode':
+        rep = max(cluster_values,
+                  key=lambda v: (global_freq.get(v, 0), -v))
+        if debug:
+            print("global_mode cluster:", cluster_values,
+                  "global_counts:",
+                  {v: global_freq.get(v, 0) for v in cluster_values},
+                  "rep:", rep)
+        return rep
+
+    if prefer == 'weighted_mean':
+        weights = [global_freq.get(v, 0) for v in cluster_values]
+        total_weight = sum(weights)
+        if total_weight:
+            target = sum(w * v for v, w in zip(cluster_values, weights)) / total_weight
+        else:
+            target = statistics.mean(cluster_values)
+    else:  # median or fallback
+        target = statistics.median(cluster_values)
+
+    best = None
+    best_key = None
+    for v in cluster_values:
+        dist = abs(v - target)
+        key = (dist, -global_freq.get(v, 0), v)
+        if best is None or key < best_key:
+            best = v
+            best_key = key
+
+    if debug:
+        print(f"{prefer} cluster:", cluster_values,
+              "target:", target, "rep:", best)
+
+    return best
+
+###################################################################################
+
+def quantize_median_existing(lst, sensitivity=1.0, prefer='median',
+                             min_gap=0.0, min_cluster_size=1, debug=False):
+    
+    if not lst:
+        return []
+
+    freq = Counter(lst)
+    clusters = _auto_clusters(
+        lst,
+        sensitivity=sensitivity,
+        min_gap=min_gap,
+        min_cluster_size=min_cluster_size,
+        debug=debug
+    )
+
+    reps = {}
+    for cluster in clusters:
+        rep = _choose_rep_from_cluster(cluster, freq,
+                                       prefer=prefer, debug=debug)
+        for v in cluster:
+            reps[v] = rep
+
+    if debug:
+        print("representatives mapping:", reps)
+
+    return [reps[v] for v in lst]
+
+###################################################################################
+
+def _candidates_in_span(p: int, base: int, width: int) -> List[int]:
+    
+    top = base + width - 1
+    k_min = math.ceil((base - p) / 12)
+    k_max = math.floor((top - p) / 12)
+    
+    return [p + 12 * k for k in range(k_min, k_max + 1)]
+
+###################################################################################
+
+def _viterbi_with_jump_penalty(pitches: List[int],
+                               candidates: List[List[int]],
+                               shift_weight: float,
+                               smooth_weight: float,
+                               max_jump: int,
+                               jump_penalty: float) -> Tuple[List[int], float]:
+    
+    n = len(pitches)
+    dp: List[Dict[int, Tuple[float, int]]] = [dict() for _ in range(n)]
+    
+    # init
+    for vi, val in enumerate(candidates[0]):
+        dp[0][vi] = (shift_weight * abs(val - pitches[0]), -1)
+        
+    # forward
+    for i in range(1, n):
+        for vi, val in enumerate(candidates[i]):
+            best_cost = float('inf')
+            best_prev = -1
+            shift_cost = shift_weight * abs(val - pitches[i])
+            for u, (prev_cost, _) in dp[i-1].items():
+                prev_val = candidates[i-1][u]
+                diff = abs(val - prev_val)
+                smooth_cost = smooth_weight * diff
+                if diff > max_jump:
+                    smooth_cost += jump_penalty
+                cost = prev_cost + shift_cost + smooth_cost
+                if cost < best_cost:
+                    best_cost = cost
+                    best_prev = u
+            dp[i][vi] = (best_cost, best_prev)
+            
+    # backtrack
+    last_index, best_final_cost = min(((vi, data[0]) for vi, data in dp[-1].items()), key=lambda x: x[1])
+    seq = [0] * n
+    idx = last_index
+    for i in range(n-1, -1, -1):
+        seq[i] = candidates[i][idx]
+        _, idx = dp[i][idx]
+        
+    return seq, best_final_cost
+
+###################################################################################
+
+def squash_pitches_to_octaves(pitches: List[int],
+                              num_octaves: int,
+                              shift_weight: float = 1.0,
+                              smooth_weight: float = 2.0,
+                              max_jump: int = 6,
+                              jump_penalty: float = 200.0
+                             ) -> List[int]:
+    
+    """
+    Squash MIDI pitches into a contiguous span of num_octaves octaves,
+    preserving average pitch and avoiding large jumps between consecutive notes.
+
+    Parameters
+    - pitches: list of integer MIDI pitches (0..127)
+    - num_octaves: positive integer
+    - shift_weight: weight for per-note shift (higher -> prefer nearest-octave)
+    - smooth_weight: weight for adjacent-step size (higher -> smoother)
+    - max_jump: threshold in semitones above which a large penalty is applied
+    - jump_penalty: large penalty added when a jump exceeds max_jump
+
+    Returns:
+    - list of integer MIDI pitches (0..127)
+    """
+    
+    if not isinstance(num_octaves, int) or num_octaves <= 0:
+        raise ValueError("num_octaves must be a positive integer")
+        
+    if not pitches:
+        return []
+
+    width = 12 * num_octaves
+    orig_mean = sum(pitches) / len(pitches)
+
+    base_min = int(math.floor(orig_mean - width))
+    base_max = int(math.ceil(orig_mean))
+
+    best_result = None
+    best_mean_diff = float('inf')
+    best_cost = float('inf')
+
+    for base in range(base_min, base_max + 1):
+        candidates = []
+        valid = True
+        for p in pitches:
+            cands = _candidates_in_span(p, base, width)
+            if not cands:
+                valid = False
+                break
+            candidates.append(cands)
+        if not valid:
+            continue
+
+        seq, dp_cost = _viterbi_with_jump_penalty(
+            pitches, candidates,
+            shift_weight=shift_weight,
+            smooth_weight=smooth_weight,
+            max_jump=max_jump,
+            jump_penalty=jump_penalty
+        )
+
+        mapped_mean = sum(seq) / len(seq)
+        mean_diff = abs(mapped_mean - orig_mean)
+
+        # primary: minimize mean difference; tie-break: dp cost
+        if (mean_diff < best_mean_diff - 1e-9) or (math.isclose(mean_diff, best_mean_diff, rel_tol=1e-9) and dp_cost < best_cost):
+            best_mean_diff = mean_diff
+            best_cost = dp_cost
+            best_result = seq
+
+    if best_result is None:
+        # fallback: nearest-octave mapping into centered span
+        base = int(round(orig_mean - width / 2))
+        top = base + width - 1
+        best_result = []
+        for p in pitches:
+            k_min = math.ceil((base - p) / 12)
+            k_max = math.floor((top - p) / 12)
+            if k_min <= k_max:
+                if k_min <= 0 <= k_max:
+                    k = 0
+                else:
+                    k = k_min if abs(k_min) <= abs(k_max) else k_max
+                best_result.append(p + 12 * k)
+            else:
+                if p < base:
+                    k = math.ceil((base - p) / 12)
+                    best_result.append(p + 12 * k)
+                else:
+                    k = math.floor((top - p) / 12)
+                    best_result.append(p + 12 * k)
+
+    # clamp to MIDI range and return ints
+    return [max(0, min(127, int(round(x)))) for x in best_result]
+
+###################################################################################
+
+def quantize_escore_notes(escore_notes,
+                          timings_clip_value=4000,
+                          min_notes_gap=0,
+                          **kwargs
+                         ):
+    
+    dscore = delta_score_notes(escore_notes,
+                               timings_clip_value=timings_clip_value
+                              )
+
+    cscore = chordify_score([d[1:] for d in dscore])
+    
+    dtimes = [c[0][0] for c in cscore]
+    
+    qdtimes = quantize_median_existing(dtimes, **kwargs)
+
+    output_score = []
+    
+    for i, c in enumerate(cscore):
+        c[0][0] = qdtimes[i]
+        output_score.extend(c)
+
+    output_score = delta_score_to_abs_score([['note'] + e for e in output_score])
+    
+    output_score = fix_escore_notes_durations(output_score,
+                                              min_notes_gap=min_notes_gap
+                                             )
+
+    return output_score
+
+###################################################################################
+
+def squash_monophonic_escore_notes_pitches(escore_notes,
+                                           num_octaves=2,
+                                           use_high_tone=False,
+                                           extend_durs=True,
+                                           min_notes_gap=1,
+                                           **kwargs):
+
+    cscore = chordify_score([1000, escore_notes])
+
+    pitches = [d[0][4] for d in cscore]
+    
+    sptcs = squash_pitches_to_octaves(pitches,
+                                      num_octaves,
+                                      **kwargs
+                                     )
+
+    output_score = []
+    
+    for i, c in enumerate(cscore):
+
+        if use_high_tone:
+            tones_chord = sorted(set([e[4] % 12 for e in c]))
+            high_tone = tones_chord[-1]
+            high_tone_ev = [e for e in c if e[4] % 12 == high_tone][0]
+            ev = copy.deepcopy(high_tone_ev)
+
+        else:        
+            ev = copy.deepcopy(c[0])
+            
+        ev[4] = sptcs[i]
+        output_score.append(ev)
+
+    output_score = fix_monophonic_score_durations(output_score,
+                                                  extend_durs=extend_durs,
+                                                  min_notes_gap=min_notes_gap
+                                                 )
+
+    return output_score
+
+###################################################################################
+
+def humanize_velocities_in_escore_notes(escore_notes):
+    
+    if not escore_notes:
+        return []
+
+    notes = [list(n) for n in escore_notes]
+    notes.sort(key=lambda x: (x[1], x[4])) # Sort by time, then pitch
+
+    # -----------------------------------------------------------
+    # 1. GLOBAL ANALYSIS (Grid, Phrases, Arcs)
+    # -----------------------------------------------------------
+    
+    onset_times = sorted(list(set([n[1] for n in notes])))
+    
+    # --- Grid Estimation ---
+    estimated_grid = 120
+    if len(onset_times) > 1:
+        intervals = [onset_times[i+1] - onset_times[i] for i in range(len(onset_times)-1)]
+        active_intervals = [i for i in intervals if i > 0 and i < 960] 
+        if active_intervals:
+            rounded_intervals = [round(i / 10) * 10 for i in active_intervals]
+            valid_intervals = [r for r in rounded_intervals if r > 0]
+            if valid_intervals:
+                estimated_grid = max(set(valid_intervals), key=valid_intervals.count)
+
+    # --- Beat Grid Calculation ---
+    if estimated_grid <= 120:
+        beat_grid = estimated_grid * 4 
+    elif estimated_grid <= 240:
+        beat_grid = estimated_grid * 2
+    else:
+        beat_grid = estimated_grid
+
+    # --- Phrase Detection ---
+    melodic_onsets = sorted(list(set([n[1] for n in notes if n[3] != 9])))
+    phrase_gap_threshold = beat_grid * 3
+    
+    phrases = []
+    current_phrase = []
+    
+    if not melodic_onsets: melodic_onsets = onset_times
+
+    for i, t in enumerate(melodic_onsets):
+        if not current_phrase:
+            current_phrase.append(t)
+        else:
+            prev_t = melodic_onsets[i-1]
+            if t - prev_t > phrase_gap_threshold:
+                phrases.append(current_phrase)
+                current_phrase = [t]
+            else:
+                current_phrase.append(t)
+    if current_phrase:
+        phrases.append(current_phrase)
+
+    # --- Global Arc Calculation ---
+    total_duration = onset_times[-1] - onset_times[0] if onset_times else 0
+    global_progress_map = {}
+    for t in onset_times:
+        progress = (t - onset_times[0]) / total_duration if total_duration > 0 else 0
+        global_arc = math.cos((progress - 0.5) * math.pi) * 6 # Range -6 to +6
+        global_progress_map[t] = global_arc
+
+    # -----------------------------------------------------------
+    # 2. INSTRUMENT SEPARATION & PROCESSING
+    # -----------------------------------------------------------
+
+    instrument_tracks = defaultdict(list)
+    for n in notes:
+        instrument_tracks[(n[3], n[6])].append(n)
+
+    # Main Loop
+    for key, track_notes in instrument_tracks.items():
+        channel, inst_num = key
+        
+        # --- Instrument Classification ---
+        is_drum = (channel == 9) or (inst_num == 128)
+        is_bass = (32 <= inst_num <= 39)
+        is_keys = (inst_num <= 7) or (16 <= inst_num <= 23)
+        is_plucked = (24 <= inst_num <= 31)
+        is_solo_string = (40 <= inst_num <= 47)
+        is_ensemble = (48 <= inst_num <= 55)
+        is_synth_lead = (80 <= inst_num <= 87)
+        is_synth_pad = (88 <= inst_num <= 95)
+        
+        track_notes.sort(key=lambda x: (x[1], x[4]))
+
+        # ==========================================================
+        # LOGIC A: DRUMS (UNIFORM & SEPARATED)
+        # ==========================================================
+        if is_drum:
+            for n in track_notes:
+                t, pitch = n[1], n[4]
+                
+                is_kick = pitch in [35, 36]
+                is_snare = pitch in [38, 40]
+                is_hat = pitch in [42, 44, 46]
+                is_tom = 41 <= pitch <= 50 and not is_hat and not is_snare
+                
+                if is_kick:
+                    target_vel = 115
+                elif is_snare:
+                    target_vel = 112
+                elif is_hat:
+                    target_vel = 90 
+                elif is_tom:
+                    target_vel = 105
+                else:
+                    target_vel = 100
+
+                position_in_beat = t % beat_grid
+                if position_in_beat == 0:
+                    metric_mod = 0 
+                elif position_in_beat == (beat_grid // 2):
+                    metric_mod = -2 
+                else:
+                    metric_mod = -6 
+                
+                closest_t = min(onset_times, key=lambda x: abs(x - t))
+                global_mod = global_progress_map.get(closest_t, 0)
+
+                final_vel = target_vel + metric_mod + global_mod + random.gauss(0, 2.0)
+                n[5] = max(30, min(127, int(final_vel)))
+            
+            continue
+
+        # ==========================================================
+        # LOGIC B: BASS
+        # ==========================================================
+        elif is_bass:
+            last_vel = 100
+            for n in track_notes:
+                t = n[1]
+                
+                position_in_grid = t % beat_grid
+                metric_strength = 4 if position_in_grid == 0 else (1 if position_in_grid == (beat_grid // 2) else -2)
+                
+                target = 100 + metric_strength
+                
+                smoothed = (target * 0.3) + (last_vel * 0.7)
+                last_vel = smoothed
+                
+                final_vel = smoothed + random.gauss(0, 2)
+                n[5] = max(30, min(115, int(final_vel)))
+            continue
+
+        # ==========================================================
+        # LOGIC C: MELODIC INSTRUMENTS
+        # ==========================================================
+        else:
+            # --- Role Detection (Base Velocity Target) ---
+            # Determine the 'floor' velocity for this track
+            
+            base_vel_target = 90 # Default
+            
+            if is_solo_string or is_synth_lead:
+                base_vel_target = 105 # Lead
+            elif is_ensemble or is_synth_pad:
+                base_vel_target = 80  # Pad/Backing
+            elif is_plucked:
+                # Check density for Guitar Solo vs Rhythm
+                unique_onsets = set(nn[1] for nn in track_notes)
+                avg_poly = len(track_notes) / len(unique_onsets) if unique_onsets else 1
+                base_vel_target = 105 if avg_poly < 1.3 else 95
+            elif is_keys:
+                # Check if it looks like a Solo Piano piece or just a Piano track
+                # If the whole score is basically this track -> Solo
+                if len(track_notes) > (len(notes) * 0.8): 
+                    base_vel_target = 100
+                else:
+                    base_vel_target = 90
+
+            # --- Dispatch to specific logic ---
+            
+            # CASE 1: PIANO / KEYS (RESTORED ORIGINAL LOGIC)
+            if is_keys:
+                last_vel_lh = base_vel_target
+                last_vel_rh = base_vel_target
+                prev_melody_pitch = None
+                
+                time_slices = defaultdict(list)
+                for n in track_notes:
+                    time_slices[n[1]].append(n)
+                sorted_times = sorted(time_slices.keys())
+                
+                for t_idx, t in enumerate(sorted_times):
+                    slice_notes = time_slices[t]
+                    slice_notes.sort(key=lambda x: x[4])
+                    
+                    # Context Mods
+                    phrase_arc_mod = 0
+                    for p_times in phrases:
+                        if t in p_times:
+                            p_len = p_times[-1] - p_times[0]
+                            if p_len > 0:
+                                progress = (t - p_times[0]) / p_len
+                                phrase_arc_mod = math.cos((1.0 - progress) * math.pi) * 0.5 + 0.5
+                                phrase_arc_mod = (phrase_arc_mod - 0.5) * 10
+                            break
+                    
+                    global_arc = global_progress_map.get(t, 0)
+                    
+                    position_in_grid = t % beat_grid
+                    if position_in_grid == 0: metric_strength = 6
+                    elif position_in_grid == (beat_grid // 2): metric_strength = 2
+                    else: metric_strength = -3
+                    
+                    # Hand Splitting Logic
+                    pitches = [n[4] for n in slice_notes]
+                    split_idx = 0
+                    max_gap = 0
+                    
+                    if len(pitches) > 1:
+                        for i in range(len(pitches)-1):
+                            gap = pitches[i+1] - pitches[i]
+                            if gap > max_gap:
+                                max_gap = gap
+                                split_idx = i + 1
+                    
+                    if max_gap < 12:
+                        avg_pitch = sum(pitches) / len(pitches)
+                        split_idx = 0 if avg_pitch >= 60 else len(pitches)
+                    
+                    lh_notes = slice_notes[:split_idx]
+                    rh_notes = slice_notes[split_idx:]
+                    
+                    # LH Processing
+                    if lh_notes:
+                        target_lh = base_vel_target + metric_strength + global_arc + phrase_arc_mod - 3
+                        smoothed_lh = (target_lh * 0.25) + (last_vel_lh * 0.75)
+                        last_vel_lh = smoothed_lh
+                        
+                        for i, n in enumerate(lh_notes):
+                            offset = 0 if i == 0 else -5
+                            if n[2] < estimated_grid / 2: offset += 2
+                            vel = smoothed_lh + offset + random.gauss(0, 2)
+                            n[5] = max(30, min(115, int(vel)))
+
+                    # RH Processing
+                    if rh_notes:
+                        target_rh = base_vel_target + metric_strength + global_arc + phrase_arc_mod + 3
+                        smoothed_rh = (target_rh * 0.35) + (last_vel_rh * 0.65)
+                        last_vel_rh = smoothed_rh
+                        
+                        current_top_pitch = rh_notes[-1][4]
+                        num_rh = len(rh_notes)
+                        is_dense = num_rh >= 3
+                        
+                        for i, n in enumerate(rh_notes):
+                            pitch = n[4]
+                            offset = 0
+                            
+                            if i == num_rh - 1: # Top note melody
+                                offset = 12 if is_dense else 5
+                                if prev_melody_pitch is not None:
+                                    diff = pitch - prev_melody_pitch
+                                    if diff > 4: offset += 6
+                                    elif diff > 0: offset += 3
+                                    elif diff < -4: offset -= 4
+                                if pitch > 72: offset += (pitch - 72) * 0.2
+                                prev_melody_pitch = pitch
+                            elif i == 0:
+                                offset = -1
+                            else:
+                                offset = -8
+                            
+                            if n[2] < estimated_grid / 2: offset += 2
+                            vel = smoothed_rh + offset + random.gauss(0, 2)
+                            n[5] = max(35, min(120, int(vel)))
+
+            # CASE 2: OTHER MELODIC (Generic Role-Based Logic)
+            else:
+                last_vel = base_vel_target
+                prev_melody_pitch = None
+                
+                time_slices = defaultdict(list)
+                for n in track_notes:
+                    time_slices[n[1]].append(n)
+                sorted_times = sorted(time_slices.keys())
+                
+                for t_idx, t in enumerate(sorted_times):
+                    slice_notes = time_slices[t]
+                    slice_notes.sort(key=lambda x: x[4])
+                    
+                    # Context
+                    phrase_arc_mod = 0
+                    for p_times in phrases:
+                        if t in p_times:
+                            p_len = p_times[-1] - p_times[0]
+                            if p_len > 0:
+                                progress = (t - p_times[0]) / p_len
+                                phrase_arc_mod = math.sin(progress * math.pi) * 6
+                            break
+                    
+                    global_arc = global_progress_map.get(t, 0)
+                    
+                    position_in_grid = t % beat_grid
+                    if position_in_grid == 0: metric_strength = 6
+                    elif position_in_grid == (beat_grid // 2): metric_strength = 2
+                    else: metric_strength = -3
+                    
+                    core_vel = base_vel_target + metric_strength + global_arc + phrase_arc_mod
+                    smoothed = (core_vel * 0.35) + (last_vel * 0.65)
+                    last_vel = smoothed
+                    
+                    num_notes = len(slice_notes)
+                    
+                    for i, n in enumerate(slice_notes):
+                        pitch = n[4]
+                        offset = 0
+                        
+                        if i == num_notes - 1:
+                            offset = 10 
+                            if prev_melody_pitch is not None:
+                                diff = pitch - prev_melody_pitch
+                                if diff > 4: offset += 5
+                            prev_melody_pitch = pitch
+                        elif i == 0:
+                            offset = 0
+                        else:
+                            offset = -6
+                        
+                        final_vel = smoothed + offset + random.gauss(0, 3)
+                        n[5] = max(30, min(127, int(final_vel)))
+
+    # -----------------------------------------------------------
+    # 3. FINAL EXPRESSIVE SCALING
+    # -----------------------------------------------------------
+    for n in notes:
+        if n[3] == 9: 
+            continue 
+
+        v = n[5]
+        center = 95
+        
+        deviation = v - center
+        final_v = center + (deviation * 1.1)
+        final_v += random.randint(-1, 1)
+        
+        n[5] = max(20, min(127, int(final_v)))
+
+    return notes
+
+###################################################################################
+
+def most_common_ordered_set(values, top_k):
+    
+    freq = Counter(values)
+    
+    top_vals = {v for v, _ in freq.most_common(top_k)}
+
+    result = []
+    seen = set()
+    
+    for v in values:
+        if v in top_vals and v not in seen:
+            result.append(v)
+            seen.add(v)
+            if len(result) >= top_k:
+                break
+
+    return result
+
+###################################################################################
+
+def escore_notes_velocities(escore_notes, chan_idx=3, vels_idx=5):
+
+    output_list = []
+
+    all_vels = [e[vels_idx] for e in escore_notes]
+    avg_vel = sum(all_vels) / len(all_vels)
+    vels_span = max(all_vels) - min(all_vels)
+
+    output_list.append([-1, min(all_vels), avg_vel, max(all_vels), vels_span])
+
+    chan_groups = groupby(sorted(escore_notes, key=lambda x: x[chan_idx]), key=lambda x: x[chan_idx])
+
+    for cha, group in chan_groups:
+        all_vels = [e[vels_idx] for e in list(group)]
+        avg_vel = sum(all_vels) / len(all_vels)
+        vels_span = max(all_vels) - min(all_vels)
+        output_list.append([cha, min(all_vels), avg_vel, max(all_vels), vels_span])
+
+    return output_list
+
+###################################################################################
+
+Patch2octave = {
+ 'Acoustic Grand': 60,
+ 'Bright Acoustic': 60,
+ 'Electric Grand': 60,
+ 'Honky-Tonk': 60,
+ 'Electric Piano 1': 60,
+ 'Electric Piano 2': 60,
+ 'Harpsichord': 60,
+ 'Clav': 60,
+ 'Celesta': 72,
+ 'Glockenspiel': 84,
+ 'Music Box': 72,
+ 'Vibraphone': 60,
+ 'Marimba': 48,
+ 'Xylophone': 72,
+ 'Tubular Bells': 72,
+ 'Dulcimer': 72,
+ 'Drawbar Organ': 60,
+ 'Percussive Organ': 60,
+ 'Rock Organ': 60,
+ 'Church Organ': 48,
+ 'Reed Organ': 60,
+ 'Accordion': 60,
+ 'Harmonica': 60,
+ 'Tango Accordion': 60,
+ 'Acoustic Guitar(nylon)': 48,
+ 'Acoustic Guitar(steel)': 48,
+ 'Electric Guitar(jazz)': 48,
+ 'Electric Guitar(clean)': 48,
+ 'Electric Guitar(muted)': 48,
+ 'Overdriven Guitar': 48,
+ 'Distortion Guitar': 48,
+ 'Guitar Harmonics': 60,
+ 'Acoustic Bass': 36,
+ 'Electric Bass(finger)': 36,
+ 'Electric Bass(pick)': 36,
+ 'Fretless Bass': 36,
+ 'Slap Bass 1': 36,
+ 'Slap Bass 2': 36,
+ 'Synth Bass 1': 36,
+ 'Synth Bass 2': 36,
+ 'Violin': 72,
+ 'Viola': 60,
+ 'Cello': 48,
+ 'Contrabass': 36,
+ 'Tremolo Strings': 60,
+ 'Pizzicato Strings': 60,
+ 'Orchestral Harp': 60,
+ 'Timpani': 36,
+ 'String Ensemble 1': 60,
+ 'String Ensemble 2': 60,
+ 'SynthStrings 1': 60,
+ 'SynthStrings 2': 60,
+ 'Choir Aahs': 60,
+ 'Voice Oohs': 60,
+ 'Synth Voice': 60,
+ 'Orchestra Hit': 60,
+ 'Trumpet': 60,
+ 'Trombone': 48,
+ 'Tuba': 36,
+ 'Muted Trumpet': 60,
+ 'French Horn': 48,
+ 'Brass Section': 48,
+ 'SynthBrass 1': 60,
+ 'SynthBrass 2': 60,
+ 'Soprano Sax': 72,
+ 'Alto Sax': 60,
+ 'Tenor Sax': 48,
+ 'Baritone Sax': 36,
+ 'Oboe': 72,
+ 'English Horn': 60,
+ 'Bassoon': 48,
+ 'Clarinet': 60,
+ 'Piccolo': 84,
+ 'Flute': 72,
+ 'Recorder': 72,
+ 'Pan Flute': 72,
+ 'Blown Bottle': 60,
+ 'Skakuhachi': 60,
+ 'Whistle': 72,
+ 'Ocarina': 60,
+ 'Lead 1 (square)': 60,
+ 'Lead 2 (sawtooth)': 60,
+ 'Lead 3 (calliope)': 60,
+ 'Lead 4 (chiff)': 60,
+ 'Lead 5 (charang)': 60,
+ 'Lead 6 (voice)': 60,
+ 'Lead 7 (fifths)': 60,
+ 'Lead 8 (bass+lead)': 60,
+ 'Pad 1 (new age)': 60,
+ 'Pad 2 (warm)': 60,
+ 'Pad 3 (polysynth)': 60,
+ 'Pad 4 (choir)': 60,
+ 'Pad 5 (bowed)': 60,
+ 'Pad 6 (metallic)': 60,
+ 'Pad 7 (halo)': 60,
+ 'Pad 8 (sweep)': 60,
+ 'FX 1 (rain)': 72,
+ 'FX 2 (soundtrack)': 72,
+ 'FX 3 (crystal)': 72,
+ 'FX 4 (atmosphere)': 72,
+ 'FX 5 (brightness)': 72,
+ 'FX 6 (goblins)': 72,
+ 'FX 7 (echoes)': 72,
+ 'FX 8 (sci-fi)': 72,
+ 'Sitar': 60,
+ 'Banjo': 60,
+ 'Shamisen': 60,
+ 'Koto': 60,
+ 'Kalimba': 60,
+ 'Bagpipe': 60,
+ 'Fiddle': 72,
+ 'Shanai': 60,
+ 'Tinkle Bell': 84,
+ 'Agogo': 60,
+ 'Steel Drums': 72,
+ 'Woodblock': 72,
+ 'Taiko Drum': 36,
+ 'Melodic Tom': 48,
+ 'Synth Drum': 48,
+ 'Reverse Cymbal': 72,
+ 'Guitar Fret Noise': 60,
+ 'Breath Noise': 60,
+ 'Seashore': 60,
+ 'Bird Tweet': 84,
+ 'Telephone Ring': 72,
+ 'Helicopter': 60,
+ 'Applause': 60,
+ 'Gunshot': 60
+}
+
+###################################################################################
+
+reverse_dict_grouped = lambda dic: {v: [k for k, _v in dic.items() if _v == v] for v in set(dic.values())}
+
+###################################################################################
+
+reverse_dict = lambda dic: {v: k for k, v in dic.items()}
+
+###################################################################################
+
+def trim_list_trail_range(lst, low, high):
+    return lst[: next((i for i in range(len(lst)-1, -1, -1) if low <= lst[i] <= high), -1) + 1]
+
+###################################################################################
+
+def merge_text_files(files,
+                     output_path,
+                     title,
+                     sep_char='=',
+                     sep_len=120,
+                     verbose=False
+                    ):
+    
+    sep = sep_char * sep_len
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+    with open(output_path, "w", encoding="utf-8") as out:
+        out.write(f"{sep} {title} {sep}\n\n")
+
+        for path in files:
+            name = os.path.basename(path)
+            out.write(f"{sep} {name} {sep}\n\n")
+
+            with open(path, "r", encoding="utf-8") as inp:
+                for line in inp:
+                    out.write(line.rstrip("\n") + "\n")
+                    
+            out.write("\n")
+            
+    if verbose:
+        print(f"Merged {len(files)} files into {output_path}")
+
+###################################################################################
+        
+def chord_cost(input_pc,
+               candidate,
+               del_white=5.0,
+               del_black=1.0,
+               ins_white=1.0,
+               ins_black=5.0,
+               col_change_w2b=3.0,
+               col_change_b2w=0.5
+               ):
+    
+    """
+    Compute minimal cost to transform input_pc into candidate.
+    Costs are tuned to preserve white notes and avoid introducing black notes.
+    """
+    
+    m, n = len(input_pc), len(candidate)
+
+    # Circular distance matrix
+    dist = [[min(abs(a - b), 12 - abs(a - b)) for b in candidate] for a in input_pc]
+
+    # Color: 1 for black, 0 for white
+    col_in = [1 if note in BLACK_NOTES else 0 for note in input_pc]
+    col_cand = [1 if note in BLACK_NOTES else 0 for note in candidate]
+
+    # Cost parameters
+    DEL_WHITE = del_white      # deleting a white note is very undesirable
+    DEL_BLACK = del_black      # deleting a black note is cheap
+    INS_WHITE = ins_white      # adding a white note is acceptable
+    INS_BLACK = ins_black      # adding a black note is heavily penalised
+    COL_CHANGE_W2B = col_change_w2b # white → black is bad
+    COL_CHANGE_B2W = col_change_b2w # black → white is slightly encouraged
+
+    @lru_cache(maxsize=None)
+    def dfs(i, used_mask):
+        if i == m:
+            # All input processed: add insertion cost for any unused candidate notes
+            cost = 0.0
+            for j in range(n):
+                if not (used_mask >> j) & 1:
+                    cost += INS_WHITE if col_cand[j] == 0 else INS_BLACK
+            return cost
+
+        # Option 1: delete current input note
+        best = (DEL_WHITE if col_in[i] == 0 else DEL_BLACK) + dfs(i + 1, used_mask)
+
+        # Option 2: match to an unused candidate
+        for j in range(n):
+            if not (used_mask >> j) & 1:
+                d = dist[i][j]
+                # Color change penalty
+                if col_in[i] == 1 and col_cand[j] == 0:
+                    d += COL_CHANGE_B2W
+                elif col_in[i] == 0 and col_cand[j] == 1:
+                    d += COL_CHANGE_W2B
+                best = min(best, d + dfs(i + 1, used_mask | (1 << j)))
+        return best
+
+    return dfs(0, 0)
+        
+###################################################################################
+
+def expert_check_and_fix_tones_chord(tones_chord, use_full_chords=False, **kwargs):
+    
+    """
+    Given a list of pitch classes (0-11), return the closest valid chord
+    from the selected list using a musically informed cost function.
+    
+    ------
+    KWARGS
+    ------
+    
+    # Cost parameters
+    del_white = 5.0      # deleting a white note is very undesirable
+    del_black = 1.0      # deleting a black note is cheap
+    ins_white = 1.0      # adding a white note is acceptable
+    ins_black = 5.0      # adding a black note is heavily penalised
+    col_change_w2b = 3.0 # white → black is bad
+    col_change_b2w = 0.5 # black → white is slightly encouraged
+    """
+    
+    tones_chord = sorted(set(tones_chord))
+    
+    if not tones_chord:
+        return []
+
+    if use_full_chords:
+        CHORDS = ALL_CHORDS_FULL
+    else:
+        CHORDS = ALL_CHORDS_SORTED
+
+    # Exact match
+    if tones_chord in CHORDS:
+        return tones_chord
+
+    best_chord = None
+    best_cost = float('inf')
+
+    for chord in CHORDS:
+        cost = chord_cost(tones_chord, chord, **kwargs)
+        if cost < best_cost:
+            best_cost = cost
+            best_chord = chord
+        elif cost == best_cost and best_chord is not None:
+            # Tie‑breaker: prefer chord with fewer black notes
+            black_best = sum(1 for n in best_chord if n in BLACK_NOTES)
+            black_curr = sum(1 for n in chord if n in BLACK_NOTES)
+            if black_curr < black_best:
+                best_chord = chord
+
+    return sorted(best_chord) if best_chord else []
+        
+###################################################################################
+
+def expert_check_and_fix_pitches_chord(pitches_chord, use_full_chords=False, **kwargs):
+
+    if use_full_chords:
+        CHORDS = ALL_CHORDS_FULL
+    else:
+        CHORDS = ALL_CHORDS_SORTED
+    
+    pitches = sorted(set(pitches_chord), reverse=True)
+    
+    fixed_tones_chord = tones_chord = sorted(set([p % 12 for p in pitches]))
+
+    if tones_chord not in CHORDS:
+        fixed_tones_chord = expert_check_and_fix_tones_chord(tones_chord,
+                                                             use_full_chords=use_full_chords,
+                                                             **kwargs
+                                                             )
+        
+    same_tones = sorted(set(tones_chord) & set(fixed_tones_chord))
+    new_tones = sorted(set(same_tones) ^ set(fixed_tones_chord))
+
+    good_pitches = [p for p in pitches if p % 12 in same_tones]
+    bad_pitches = [p for p in pitches if p % 12 not in same_tones]
+
+    new_pitches = []
+    
+    for p in pitches:
+        if p not in bad_pitches:
+            new_pitches.append(p)
+    
+        else:
+            octave = (p // 12)
+
+            if octave > 4:
+                octave -= 1
+
+            else:
+                octave += 1
+                
+            tone = p % 12
+    
+            if new_tones:
+                ntone = find_closest_tone(new_tones, tone)
+        
+                new_pitch = (octave * 12)+ntone
+        
+                while new_pitch in good_pitches or new_pitch in new_pitches:
+                    octave -= 1
+                    new_pitch = (octave * 12)+ntone
+        
+                new_pitches.append(new_pitch)
+    
+            else:
+    
+                ntone = find_closest_tone(same_tones, tone) 
+                
+                new_pitch = (octave * 12)+ntone
+        
+                while new_pitch in good_pitches or new_pitch in new_pitches:
+                    octave -= 1
+                    new_pitch = (octave * 12)+ntone
+        
+                new_pitches.append(new_pitch)
+    
+    return sorted(new_pitches, reverse=True)
+        
+###################################################################################
+
+def split_escore_notes_by_channel(escore_notes, chan_idx=3):
+
+    chan_groups = groupby(sorted(escore_notes, key=lambda x: x[chan_idx]), key=lambda x: x[chan_idx])
+
+    return {k: list(v) for k, v in chan_groups}
+        
+###################################################################################
+
+def split_escore_notes_by_patch(escore_notes, pat_idx=6):
+
+    chan_groups = groupby(sorted(escore_notes, key=lambda x: x[pat_idx]), key=lambda x: x[pat_idx])
+
+    return {k: list(v) for k, v in chan_groups}
+        
+###################################################################################
+
+def expert_check_and_fix_chords_in_escore_notes(escore_notes,
+                                                use_full_chords=False,
+                                                split_by_channel=False,
+                                                **kwargs
+                                                ):
+
+    cscore = chordify_score([1000, escore_notes])
+
+    fixed_score = []
+
+    for c in cscore:
+        
+        if split_by_channel:
+            pat_groups = split_escore_notes_by_channel(c)
+            drumsg = 9
+            
+        else:
+            pat_groups = split_escore_notes_by_patch(c)
+            drumsg = 128
+
+        for pat, evs in pat_groups.items():
+
+            if pat != drumsg:
+                evs_set = []
+                seen = set()
+                
+                for e in evs:
+                    if e[4] not in seen:
+                        evs_set.append(e)
+                        seen.add(e[4])
+
+                evs_set = sorted(evs_set, key=lambda x: -x[4])
+                
+                pitches_chord = [e[4] for e in evs_set]
+
+                fixed_pitches_chord = expert_check_and_fix_pitches_chord(pitches_chord,
+                                                                         use_full_chords=use_full_chords,
+                                                                         **kwargs
+                                                                         )
+
+                fixed_chord = []
+
+                for i, e in enumerate(evs_set):
+                    ee = copy.deepcopy(e)
+
+                    ee[4] = fixed_pitches_chord[i]
+                    fixed_score.append(ee)
+
+            else:
+                fixed_score.extend(evs)
+            
+    return sorted(fixed_score, key=lambda x: (x[1], -x[4], x[6]) if x[6] != 128 else (x[1], x[6], -x[4]))
+        
+###################################################################################
+
+def sparse_random_int_list(length, sparsity=0.01, value_range=(1, 100)):
+    
+    """
+    Create a highly sparse list of random integers.
+    
+    length: total length of the list
+    sparsity: probability that a given index contains a non-zero value (0.01 = 1%)
+    value_range: (min, max) range for random integers
+    """
+    
+    low, high = value_range
+    
+    return [
+        random.randint(low, high) if random.random() < sparsity else 0
+        for _ in range(length)
+    ]
+
+###################################################################################
+
+def detect_list_values_type(values):
+    
+    """
+    Detect the most specific type that can represent all values in the list.
+    Returns one of:
+      'bool', 'byte', 'int8', 'int16', 'int32', 'int64',
+      'float32', 'float64', 'object'
+    """
+
+    if not values:
+        return None
+
+    # --- BOOL CHECK ---
+    if all(isinstance(v, bool) for v in values):
+        return "bool"
+
+    # --- INT CHECK ---
+    if all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+        mn, mx = min(values), max(values)
+
+        # byte (unsigned 8-bit)
+        if 0 <= mn and mx <= 255:
+            return "byte"
+
+        # int8 (signed 8-bit)
+        if -128 <= mn and mx <= 127:
+            return "int8"
+
+        # int16
+        if -32768 <= mn and mx <= 32767:
+            return "int16"
+
+        # int32
+        if -2147483648 <= mn and mx <= 2147483647:
+            return "int32"
+
+        # otherwise int64
+        return "int64"
+
+    # --- FLOAT CHECK ---
+    if all(isinstance(v, float) for v in values):
+
+        def to_float32(x):
+            return struct.unpack("!f", struct.pack("!f", x))[0]
+
+        if all(abs(to_float32(v) - v) < 1e-7 for v in values):
+            return "float32"
+
+        return "float64"
+
+    # --- MIXED TYPES ---
+    return "object"
+
+###################################################################################
+
+# ---------- VarInt helpers (operate on bytearray) ----------
+def _write_varint_to_bytearray(n: int, out: bytearray) -> None:
+    """Append a VarInt (LE 7-bit groups, MSB continuation) to out."""
+    if n < 0:
+        raise ValueError("VarInt only works with non-negative integers")
+    while True:
+        byte = n & 0x7F
+        n >>= 7
+        if n:
+            byte |= 0x80
+        out.append(byte)
+        if not n:
+            break
+        
+###################################################################################
+
+def _read_varint_from_bytearray(data: bytearray, pos: int) -> Tuple[int, int]:
+    """Read a VarInt from data starting at pos; returns (value, new_pos)."""
+    value = 0
+    shift = 0
+    start = pos
+    while True:
+        if pos >= len(data):
+            raise ValueError("Unexpected end of data while reading VarInt")
+        b = data[pos]
+        pos += 1
+        value |= (b & 0x7F) << shift
+        shift += 7
+        if not (b & 0x80):
+            break
+        if shift > 10 * 7:  # arbitrary safety for extremely large varints
+            raise ValueError("VarInt too large or malformed (excessive length)")
+    return value, pos
+
+###################################################################################
+
+# ---------- ZigZag (signed ↔ unsigned) ----------
+def _zigzag_encode(n: int) -> int:
+    """ZigZag encode arbitrary Python int to non-negative int."""
+    if n >= 0:
+        return n << 1
+    else:
+        return ((-n) << 1) - 1
+    
+###################################################################################
+
+def _zigzag_decode(n: int) -> int:
+    """Decode ZigZag-encoded non-negative int back to signed int."""
+    return (n >> 1) if (n & 1) == 0 else -((n >> 1) + 1)
+
+###################################################################################
+# ---------- Helpers ----------
+def _fits_in_signed(bits: int, v: int) -> bool:
+    lo = -(1 << (bits - 1))
+    hi = (1 << (bits - 1)) - 1
+    return lo <= v <= hi
+
+###################################################################################
+
+def _fits_in_unsigned(bits: int, v: int) -> bool:
+    return 0 <= v <= (1 << bits) - 1
+
+###################################################################################
+
+def _choose_fixed_type(values: List[int]) -> str:
+    """Choose smallest fixed-width type that fits all values.
+    Prefers unsigned types when all values >= 0.
+    Returns one of: 'bool','byte'/'uint8','int8','int16','int32','int64'"""
+    if not values:
+        return 'int32'  # default when no non-zeros
+    all_nonneg = all(v >= 0 for v in values)
+    if all(v in (0, 1) for v in values):
+        return 'bool'
+    if all_nonneg and all(_fits_in_unsigned(8, v) for v in values):
+        return 'byte'  # alias for uint8
+    if all(_fits_in_signed(8, v) for v in values):
+        return 'int8'
+    if all(_fits_in_signed(16, v) for v in values):
+        return 'int16'
+    if all(_fits_in_signed(32, v) for v in values):
+        return 'int32'
+    return 'int64'
+
+###################################################################################
+
+# ---------- Public API ----------
+def encode_sparse_list(lst: List[int], value_type: Optional[str] = None) -> List[int]:
+    """
+    Compress a sparse list of integers into a list of bytes (ints 0-255).
+
+    Parameters:
+        lst: input list of integers.
+        value_type:
+            None -> auto ZigZag+VarInt for values (best for arbitrary signed ints)
+            'auto' -> pick smallest fixed-width type (or bool) based on values
+            'bool' -> store only positions (value implicitly 1)
+            'byte' or 'uint8' -> store unsigned 8-bit value per non-zero
+            'int8','int16','int32','int64' -> store fixed-width signed values
+
+    Returns:
+        List[int] of bytes (0-255).
+    """
+    non_zeros = [(i, val) for i, val in enumerate(lst) if val != 0]
+    k = len(non_zeros)
+    n = len(lst)
+
+    # If auto, decide based on values
+    if value_type == 'auto':
+        values = [val for _, val in non_zeros]
+        value_type = _choose_fixed_type(values)
+
+    out = bytearray()
+    _write_varint_to_bytearray(n, out)
+    _write_varint_to_bytearray(k, out)
+
+    prev_idx = 0
+    for idx, val in non_zeros:
+        delta = idx - prev_idx
+        if delta <= 0:
+            raise ValueError("Indices must be strictly increasing")
+        _write_varint_to_bytearray(delta, out)
+
+        if value_type is None:
+            # ZigZag + VarInt
+            _write_varint_to_bytearray(_zigzag_encode(val), out)
+        elif value_type == 'bool':
+            # no value bytes stored; value implicitly 1
+            pass
+        elif value_type in ('byte', 'uint8'):
+            if not _fits_in_unsigned(8, val):
+                raise ValueError(f"value {val} out of range for uint8")
+            out.append(val & 0xFF)
+        elif value_type == 'int8':
+            out.extend(struct.pack('<b', val))
+        elif value_type == 'int16':
+            out.extend(struct.pack('<h', val))
+        elif value_type == 'int32':
+            out.extend(struct.pack('<i', val))
+        elif value_type == 'int64':
+            out.extend(struct.pack('<q', val))
+        else:
+            raise ValueError(f"Unsupported value_type: {value_type}")
+
+        prev_idx = idx
+
+    # Return as list[int] for compatibility
+    return list(out)
+
+###################################################################################
+
+def decode_sparse_list(encoded: List[int], value_type: Optional[str] = None) -> List[int]:
+    """
+    Decompress a list of bytes (ints) back into the original integer list.
+
+    Parameters:
+        encoded: list of bytes (ints 0-255) produced by encode_sparse_list.
+        value_type: must match the type used during encoding. Use 'auto' only if
+                    you encoded with 'auto' and stored the chosen type separately.
+
+    Returns:
+        The reconstructed list of integers.
+    """
+    data = bytearray(encoded)
+    pos = 0
+
+    n, pos = _read_varint_from_bytearray(data, pos)
+    k, pos = _read_varint_from_bytearray(data, pos)
+
+    result = [0] * n
+    prev_idx = 0
+
+    for _ in range(k):
+        delta, pos = _read_varint_from_bytearray(data, pos)
+        if delta <= 0:
+            raise ValueError("Invalid delta (must be >= 1)")
+        idx = prev_idx + delta
+
+        if value_type is None:
+            zigzag_val, pos = _read_varint_from_bytearray(data, pos)
+            val = _zigzag_decode(zigzag_val)
+        elif value_type == 'bool':
+            val = 1
+        elif value_type in ('byte', 'uint8'):
+            if pos >= len(data):
+                raise ValueError("Unexpected end of data while reading uint8")
+            val = data[pos]
+            pos += 1
+        elif value_type == 'int8':
+            if pos + 1 > len(data):
+                raise ValueError("Unexpected end of data while reading int8")
+            val = struct.unpack('<b', bytes([data[pos]]))[0]
+            pos += 1
+        elif value_type == 'int16':
+            if pos + 2 > len(data):
+                raise ValueError("Unexpected end of data while reading int16")
+            val = struct.unpack('<h', bytes(data[pos:pos+2]))[0]
+            pos += 2
+        elif value_type == 'int32':
+            if pos + 4 > len(data):
+                raise ValueError("Unexpected end of data while reading int32")
+            val = struct.unpack('<i', bytes(data[pos:pos+4]))[0]
+            pos += 4
+        elif value_type == 'int64':
+            if pos + 8 > len(data):
+                raise ValueError("Unexpected end of data while reading int64")
+            val = struct.unpack('<q', bytes(data[pos:pos+8]))[0]
+            pos += 8
+        else:
+            raise ValueError(f"Unsupported value_type: {value_type}")
+
+        if not (0 <= idx < n):
+            raise IndexError("Decoded index out of range")
+        result[idx] = val
+        prev_idx = idx
+
+    return result
+
+###################################################################################
+
+def shift_to_smallest_integer_type(values: List[Any]) -> Dict[str, Any]:
+    
+    """
+    Attempt to shift a list of numeric values by a single integer offset so that
+    all shifted values fit into the smallest standard integer type among:
+      - "byte"  : unsigned 8-bit  (0 .. 255)
+      - "int8"  : signed 8-bit    (-128 .. 127)
+      - "int16" : signed 16-bit   (-32768 .. 32767)
+      - "int32" : signed 32-bit   (-2147483648 .. 2147483647)
+      - "int64" : signed 64-bit   (-2**63 .. 2**63 - 1)
+
+    Rules:
+    - Accepts Python `int` and `float` values that are exact integers (e.g., 3.0).
+    - Rejects booleans and non-integer floats (returns original list).
+    - For an empty list returns {"type":"byte","values":[], "offset": 0}.
+    - Chooses the smallest type (in the order above) for which an integer offset k exists
+      satisfying tmin <= v + k <= tmax for all v.
+    - If multiple offsets are valid for a type, prefer k = 0 if possible; otherwise pick
+      the offset inside the valid interval with the smallest absolute value (tie -> smaller numeric).
+    - Return shape when shifted: {"type": <type_name>, "values": <shifted_list>, "offset": <int>}
+      When not shifted/invalid: {"type": "original", "values": <original_list>}
+    """
+    
+    # Validate list
+    if not isinstance(values, list):
+        return {"type": "original", "values": values, "offset": 0}
+
+    # Normalize: accept exact-integer floats by converting them to ints
+    normalized: List[int] = []
+    for v in values:
+        # exclude booleans explicitly
+        if isinstance(v, bool):
+            return {"type": "original", "values": values, "offset": 0}
+        if isinstance(v, int):
+            normalized.append(int(v))
+        elif isinstance(v, float):
+            if v.is_integer():
+                normalized.append(int(v))
+            else:
+                return {"type": "original", "values": values, "offset": 0}
+        else:
+            return {"type": "original", "values": values, "offset": 0}
+
+    # Empty list fits in smallest type
+    if len(normalized) == 0:
+        return {"type": "byte", "values": [], "offset": 0}
+
+    vmin = min(normalized)
+    vmax = max(normalized)
+
+    # type definitions: (name, min_allowed, max_allowed)
+    types = [
+        ("byte", 0, 255),
+        ("int8", -128, 127),
+        ("int16", -32768, 32767),
+        ("int32", -2147483648, 2147483647),
+        ("int64", -2**63, 2**63 - 1),
+    ]
+
+    for name, tmin, tmax in types:
+        # k must satisfy: tmin <= v + k <= tmax for all v
+        # so k in [tmin - vmin, tmax - vmax]
+        low = tmin - vmin
+        high = tmax - vmax
+        if low <= high:
+            # prefer 0 if possible
+            if low <= 0 <= high:
+                k = 0
+            else:
+                # choose value in [low, high] with smallest absolute value
+                # tie-breaker: choose the smaller numeric value
+                if abs(low) < abs(high):
+                    k = low
+                elif abs(high) < abs(low):
+                    k = high
+                else:
+                    k = min(low, high)
+            k = int(k)
+            shifted = [v + k for v in normalized]
+            return {"type": name, "values": shifted, "offset": k}
+
+    return {"type": "original", "values": values, "offset": 0}
+
+###################################################################################
+
+def encode_row_zero_counts(row: List[int],
+                           chunk: int = 128,
+                           verbose: bool = True
+                          ) -> List[int]:
+    
+    """
+    Encode a binary row as counts of zeros between ones.
+    - For rows with ones: returns [zc0, zc1, ..., zc_last].
+    - For all-zero rows: returns chunk-sized parts plus remainder (e.g., [128] for 128 zeros).
+    
+    Configuration: for 128-column rows use CHUNK = 128 and SHIFT > 128 (e.g., 256)
+    """
+    
+    if row is None:
+        if verbose:
+            print("row is None")
+            
+    n = len(row)
+    
+    if n == 0:
+        return [0]
+        
+    zeros = 0
+    zero_counts: List[int] = []
+    seen_one = False
+    
+    for bit in row:
+        if bit not in (0, 1):
+            if verbose:
+                print("row must contain only 0 or 1")
+            
+        if bit == 0:
+            zeros += 1
+            
+        else:
+            zero_counts.append(zeros)
+            zeros = 0
+            seen_one = True
+            
+    if not seen_one:
+
+        parts: List[int] = []
+        remaining = n
+        
+        while remaining >= chunk:
+            parts.append(chunk)
+            remaining -= chunk
+            
+        if remaining > 0:
+            parts.append(remaining)
+            
+        return parts
+        
+    return zero_counts
+
+###################################################################################
+
+def decode_row_zero_counts(zero_counts: List[int],
+                           n_cols: int,
+                           chunk: int = 128,
+                           verbose: bool = True
+                          ) -> List[int]:
+    
+    """
+    Decode zero_counts into a binary row of length n_cols.
+    Handles chunked all-zero representation (sum(zero_counts) == n_cols).
+    Otherwise decodes as zeros/ones/zeros pattern.
+
+    Configuration: for 128-column rows use CHUNK = 128 and SHIFT > 128 (e.g., 256)
+    """
+    
+    if not zero_counts:
+        if verbose:
+            print("zero_counts must be non-empty")
+            
+    if any((not isinstance(x, int) or x < 0) for x in zero_counts):
+        if verbose:
+            print("zero_counts must be nonnegative integers")
+
+    total_zeros = sum(zero_counts)
+
+    if total_zeros == n_cols:
+        return [0] * n_cols
+
+    ones = len(zero_counts)
+    if ones < 0:
+        if verbose:
+            print("invalid zero_counts for non-all-zero row")
+            
+    if (total_zeros + ones) + (n_cols - (total_zeros + ones)) != n_cols:
+        if verbose:
+            print(total_zeros + ones, (n_cols - (total_zeros + ones)))
+            print(f"zero_counts do not match expected row length: sum={total_zeros}, ones={ones}, n_cols={n_cols}")
+            
+    row: List[int] = []
+    
+    for i in range(ones):
+        row.extend([0] * zero_counts[i])
+        row.append(1)
+
+    row += [0] * (n_cols - len(row))
+    
+    return row
+
+###################################################################################
+
+def encode_matrix_marker_prefixed(matrix: List[List[int]],
+                                  shift: int = 129,
+                                  chunk: int = 128,
+                                  verbose: bool = True
+                                 ) -> Dict[str, Any]:
+    
+    """
+    Encode matrix into a list of entries where each entry is:
+      [marker, zc0, zc1, ...]
+    marker = shift + (repeat_count - 1)
+    - For a single row (no repeats) repeat_count = 1 -> marker = shift + 0 = shift
+    - For k repeated rows repeat_count = k -> marker = shift + (k - 1)
+    Validation ensures all zero_counts < shift so marker is unambiguous.
+    Returns {'shape': (n_rows, n_cols), 'rows': [...]}
+
+    Configuration: for 128-column rows use CHUNK = 128 and SHIFT > 128 (e.g., 256)
+    """
+    
+    if matrix is None or len(matrix) == 0:
+        return {'shape': (0, 0), 'rows': []}
+        
+    n_rows = len(matrix)
+    n_cols = len(matrix[0])
+    encoded_rows: List[List[int]] = []
+
+    prev_zc = None
+    prev_count = 0
+
+    for row in matrix:
+        if len(row) != n_cols:
+            if verbose:
+                print("All rows must have the same number of columns")
+                return encoded_rows
+                
+        zc = encode_row_zero_counts(row, chunk=chunk)
+
+        if any(x >= shift for x in zc):
+            if verbose:
+                print(f"zero_count value >= shift ({shift}). Increase SHIFT or reduce CHUNK. zc={zc}")
+                return encoded_rows
+
+        if prev_zc is None:
+            prev_zc = zc
+            prev_count = 1
+            
+        elif zc == prev_zc:
+            prev_count += 1
+            
+        else:
+            marker = shift + (prev_count - 1)
+            encoded_rows.append([marker] + prev_zc)
+            prev_zc = zc
+            prev_count = 1
+
+    if prev_zc is not None:
+        marker = shift + (prev_count - 1)
+        encoded_rows.append([marker] + prev_zc)
+
+    return {'shape': (n_rows, n_cols), 'rows': encoded_rows}
+
+###################################################################################
+
+def decode_matrix_marker_prefixed(encoded: Dict[str, Any],
+                                  shift: int = 129,
+                                  chunk: int = 128,
+                                  verbose: bool = True
+                                 ) -> List[List[int]]:
+    
+    """
+    Decode the structure produced by encode_matrix_marker_prefixed.
+    Each entry must be [marker, zc0, zc1, ...] where marker >= shift.
+    The repeat count is (marker - shift + 1).
+
+    Configuration: for 128-column rows use CHUNK = 128 and SHIFT > 128 (e.g., 256)
+    """
+    
+    if 'shape' not in encoded or 'rows' not in encoded:
+        if verbose:
+            print("encoded must contain 'shape' and 'rows'")
+            return None
+            
+    n_rows, n_cols = encoded['shape']
+    rows_encoded = encoded['rows']
+    matrix: List[List[int]] = []
+    total_rows = 0
+
+    for entry in rows_encoded:
+        if not isinstance(entry, list) or len(entry) == 0:
+            print("each encoded entry must be a non-empty list")
+            
+        marker = int(entry[0])
+        
+        if marker < shift:
+            if verbose:
+                print(f"marker {marker} < shift {shift}; encoded entries must start with marker")
+            
+        repeat_count = (marker - shift) + 1
+        
+        if repeat_count < 1:
+            if verbose:
+                print("computed repeat_count < 1")
+            
+        zero_counts = entry[1:]
+        
+        if any((not isinstance(x, int) or x < 0) for x in zero_counts):
+            if verbose:
+                print("zero_counts must be nonnegative integers")
+                
+        if any(x >= shift for x in zero_counts):
+            if verbose:
+                print("zero_counts contain value >= shift; ambiguous marker")
+
+        row = decode_row_zero_counts(zero_counts, n_cols, chunk=chunk)
+
+        for _ in range(repeat_count):
+            matrix.append(list(row))
+            
+        total_rows += repeat_count
+
+    if total_rows != n_rows:
+        if verbose:
+            print(f"Decoded row count {total_rows} does not match shape {n_rows}")
+            
+    return matrix
+
+###################################################################################
+
+def escore_notes_to_rle_tokens(escore_notes,
+                               shift=129,
+                               chunk=128,
+                               verbose=False
+                               ):
+    
+    bmatrix = escore_notes_to_binary_matrix(escore_notes)
+
+    enc = encode_matrix_marker_prefixed(bmatrix,
+                                        verbose=verbose
+                                        )
+    
+    return flatten(enc['rows'])
+
+###################################################################################
+
+def rle_tokens_to_escore_notes(rle_tokens_list,
+                               shift=129,
+                               chunk=128,
+                               return_bmatrix=False,
+                               return_enc_dic=False,
+                               verbose=False
+                              ):
+
+    rows = []
+    row = []
+    row_count = 0
+
+    if rle_tokens_list[0] < shift:
+        row.append(shift+1)
+    
+    for t in rle_tokens_list:
+        if t >= shift:
+            if row:
+                rows.append(row)
+                row_count += (row[0]-shift+1)
+    
+            row = [t]
+    
+        else:
+            row.append(t)
+    
+    if row:
+        rows.append(row)
+        row_count += (row[0]-shift+1)
+    
+    enc_dic = {}
+    
+    enc_dic['shape'] = row_count, chunk
+    enc_dic['rows'] = rows
+    
+    if return_enc_dic:
+        return enc_dic
+        
+    bmatrix = decode_matrix_marker_prefixed(enc_dic,
+                                            shift=shift,
+                                            chunk=chunk,
+                                            verbose=verbose
+                                            )
+
+    if return_bmatrix:
+        return bmatrix
+    
+    return binary_matrix_to_original_escore_notes(bmatrix)  
+
+###################################################################################
+
+def find_chords_chunk_in_escore_notes(escore_notes,
+                                      chords_chunk,
+                                      use_full_chords=False,
+                                      skip_pitches=False,
+                                      zero_start_times=False
+                                     ):
+
+    if use_full_chords:
+        CHORDS = ALL_CHORDS_FULL
+      
+    else:
+        CHORDS = ALL_CHORDS_SORTED
+          
+    cscore = chordify_score([1000, escore_notes])
+
+    if cscore:
+
+        score_chords = []
+    
+        for c in cscore:
+            pitches = sorted(set([e[4] for e in c if e[3] != 9]))
+            
+            chord_tok = -1
+            tchord = []
+            
+            if (skip_pitches and len(pitches) > 1) or not skip_pitches:
+            
+                tchord = sorted(set([p % 12 for p in pitches]))
+        
+            if tchord:
+        
+              if tchord not in CHORDS:
+                tchord = check_and_fix_tones_chord(tchord,
+                                                   use_full_chords=use_full_chords
+                                                   )
+        
+              chord_tok = CHORDS.index(tchord)
+        
+            score_chords.append(chord_tok)
+    
+        if score_chords:
+        
+            chunk_indexes = find_chunk_indexes(score_chords, chords_chunk)
+        
+            if chunk_indexes:
+        
+                all_scores = []
+            
+                for sidx, eidx in chunk_indexes:
+            
+                    score = flatten(cscore[sidx:eidx+1])
+            
+                    if zero_start_times:
+                        score = recalculate_score_timings(score)
+
+                    all_scores.append(score)
+
+                return all_scores
+
+    return None
+
+###################################################################################
+
+def distribute_k_values(k: float, n: int):
+    if n < 2:
+        return [float(k)]
+    
+    step = (k - 1) / (n - 1)
+    return [1 + i * step for i in range(n)]
+
+###################################################################################
+
+def binary_rle_encoder(bits):
+
+    deltas = []
+    last_pos = -1
+
+    for i, b in enumerate(bits):
+        if b == 1:
+            if last_pos == -1:
+                deltas.append(i)
+                
+            else:
+                deltas.append(i - last_pos - 1)
+                
+            last_pos = i
+
+    return deltas
+
+###################################################################################
+
+def binary_rle_decoder(deltas):
+
+    if not deltas:
+        return []
+
+    positions = []
+    pos = -1
+    
+    for d in deltas:
+        pos = pos + d + 1
+        positions.append(pos)
+
+    length = (((positions[-1] + 1) // 128)+1) * 128
+    
+    bits = [0] * length
+
+    for p in positions:
+        bits[p] = 1
+
+    return bits
+
+###################################################################################
+
+class _Node:
+    __slots__ = ("token", "prev", "next", "seq_idx")
+    def __init__(self, token: int, seq_idx: int):
+        self.token = token
+        self.prev: Optional["_Node"] = None
+        self.next: Optional["_Node"] = None
+        self.seq_idx = seq_idx
+    def __repr__(self):
+        return f"_Node(tok={self.token},seq={self.seq_idx})"
+    # Use default object identity hashing (fast and unique)
+    def __hash__(self):
+        return id(self)
+    def __eq__(self, other):
+        return self is other
+
+###################################################################################
+
+def train_bpe(
+    corpus: List[List[int]],
+    target_vocab_size: int,
+    min_frequency: int = 2,
+    start_token_id: Optional[int] = None,
+    verbose: bool = False,
+    show_progress: bool = True
+    ) -> Tuple[List[Tuple[int,int,int]], Dict[Any,int], Dict[int,Any]]:
+    
+    """
+    Fast BPE trainer using node-based occurrences and incremental updates.
+
+    Returns:
+      merges: list of (left_id, right_id, new_id)
+      token_to_id: mapping from original token or structured rep -> id
+      id_to_token: mapping from id -> structured rep
+    """
+    
+    seqs: List[List[int]] = [list(s) for s in corpus]
+
+    orig_vocab = sorted({tok for s in seqs for tok in s})
+    base_id = 0 if start_token_id is None else start_token_id
+    orig_to_compact: Dict[int, int] = {tok: base_id + i for i, tok in enumerate(orig_vocab)}
+    compact_to_orig: Dict[int, int] = {cid: tok for tok, cid in orig_to_compact.items()}
+
+    for i, s in enumerate(seqs):
+        seqs[i] = [orig_to_compact[t] for t in s]
+
+    current_vocab_size = len(orig_vocab)
+    
+    if target_vocab_size <= current_vocab_size:
+        id_to_token = {cid: ('orig', compact_to_orig[cid]) for cid in compact_to_orig}
+        token_to_id = {compact_to_orig[cid]: cid for cid in compact_to_orig}
+        return [], token_to_id, id_to_token
+
+    next_id = base_id + current_vocab_size
+
+    merges: List[Tuple[int,int,int]] = []
+    id_to_token: Dict[int, Any] = {cid: ('orig', compact_to_orig[cid]) for cid in compact_to_orig}
+    token_to_id: Dict[Any, int] = {compact_to_orig[cid]: cid for cid in compact_to_orig}
+
+    pair_counts: Counter = Counter()
+    occurrences: Dict[Tuple[int,int], Set[_Node]] = defaultdict(set)
+    seq_nodes: List[List[_Node]] = []
+
+    for si, s in enumerate(seqs):
+        
+        nodes = [ _Node(tok, si) for tok in s ]
+        
+        for i in range(len(nodes)):
+            if i > 0:
+                nodes[i].prev = nodes[i-1]
+                
+            if i + 1 < len(nodes):
+                nodes[i].next = nodes[i+1]
+                
+        seq_nodes.append(nodes)
+
+        for i in range(len(nodes)-1):
+            left = nodes[i]
+            pair = (left.token, left.next.token)
+            pair_counts[pair] += 1
+            occurrences[pair].add(left)
+
+    heap: List[Tuple[int, Tuple[int,int]]] = [(-cnt, pair) for pair, cnt in pair_counts.items()]
+    heapq.heapify(heap)
+
+    merges_needed = target_vocab_size - current_vocab_size
+    pbar = tqdm.tqdm(total=merges_needed, desc="BPE merges", disable=not show_progress)
+
+    def _repr_struct(cid):
+        rep = id_to_token.get(cid)
+        
+        if rep is None:
+            return str(cid)
+            
+        def _fmt(r):
+            if r[0] == 'orig':
+                return str(r[1])
+                
+            return "(" + _fmt(r[1]) + "," + _fmt(r[2]) + ")"
+            
+        return _fmt(rep)
+
+    def _dec_count(pair: Tuple[int,int], node: Optional[_Node] = None):
+        """Decrement count for pair and remove node from occurrences if provided."""
+        c = pair_counts.get(pair, 0)
+        
+        if c <= 1:
+            pair_counts.pop(pair, None)
+            
+            if pair in occurrences:
+                if node is None:
+                    occurrences.pop(pair, None)
+                    
+                else:
+                    occ = occurrences.get(pair)
+                    if occ:
+                        occ.discard(node)
+                        if not occ:
+                            occurrences.pop(pair, None)
+        
+        else:
+            pair_counts[pair] = c - 1
+            if node is not None:
+                occ = occurrences.get(pair)
+                if occ:
+                    occ.discard(node)
+                    if not occ:
+                        occurrences.pop(pair, None)
+
+    def _inc_count(pair: Tuple[int,int], node: Optional[_Node] = None):
+        """Increment count for pair and add node to occurrences if provided."""
+        pair_counts[pair] += 1
+        
+        if node is not None:
+            occurrences[pair].add(node)
+
+        heapq.heappush(heap, (-pair_counts[pair], pair))
+
+    merges_done = 0
+    
+    while current_vocab_size < target_vocab_size and heap:
+        while heap:
+            negcnt, pair = heap[0]
+            cnt = -negcnt
+            
+            if pair not in pair_counts or pair_counts[pair] != cnt:
+                heapq.heappop(heap)
+                continue
+                
+            break
+            
+        if not heap:
+            break
+
+        negcnt, pair = heapq.heappop(heap)
+        freq = -negcnt
+        
+        if freq < min_frequency:
+            break
+
+        a, b = pair
+        new_id = next_id
+        next_id += 1
+
+        if verbose:
+            print(f"Merging pair ({_repr_struct(a)},{_repr_struct(b)}) -> {new_id} (freq={freq})")
+
+        merges.append((a, b, new_id))
+
+        left_repr = id_to_token[a]
+        right_repr = id_to_token[b]
+        new_repr = ('pair', left_repr, right_repr)
+        id_to_token[new_id] = new_repr
+        token_to_id[new_repr] = new_id
+
+        occ_set = occurrences.get(pair)
+        
+        if not occ_set:
+            pair_counts.pop(pair, None)
+            occurrences.pop(pair, None)
+            continue
+
+        affected_nodes = list(occ_set)
+
+        occurrences.pop(pair, None)
+        pair_counts.pop(pair, None)
+
+        for left_node in affected_nodes:
+
+            if left_node.token != a:
+                continue
+                
+            right = left_node.next
+            
+            if right is None or right.token != b:
+                continue
+
+            prev_node = left_node.prev
+            next_node = right.next
+
+            if prev_node is not None:
+                _dec_count((prev_node.token, left_node.token), prev_node)
+
+            if next_node is not None:
+                _dec_count((right.token, next_node.token), right)
+
+            left_node.token = new_id
+
+            left_node.next = next_node
+            if next_node is not None:
+                next_node.prev = left_node
+
+            if prev_node is not None:
+                _inc_count((prev_node.token, left_node.token), prev_node)
+
+            if next_node is not None:
+                _inc_count((left_node.token, next_node.token), left_node)
+
+        current_vocab_size += 1
+        merges_done += 1
+        pbar.update(1)
+
+    pbar.close()
+    
+    return merges, token_to_id, id_to_token
+
+###################################################################################
+
+def bpe_encode(
+    seq: List[int],
+    merges: List[Tuple[int,int,int]],
+    token_to_id: Optional[Dict[Any,int]] = None,
+    show_progress: bool = True
+    ) -> List[int]:
+    
+    """
+    Encode a single sequence using merges applied in order.
+    This implementation uses a simple left-to-right scan per merge (same semantics as original).
+    """
+    
+    if token_to_id is not None:
+        s = [token_to_id.get(t, t) for t in seq]
+        
+    else:
+        s = list(seq)
+
+    if not merges or not s:
+        return s
+
+    for a, b, new_tok in tqdm.tqdm(merges, disable=not show_progress):
+        if len(s) < 2:
+            break
+            
+        out = []
+        i = 0
+        n = len(s)
+        ai = a; bi = b; nt = new_tok
+        
+        while i < n:
+            if i + 1 < n and s[i] == ai and s[i+1] == bi:
+                out.append(nt)
+                i += 2
+                
+            else:
+                out.append(s[i])
+                i += 1
+        s = out
+        
+    return s
+
+###################################################################################
+
+def encode_bpe_corpus(
+    corpus: Iterable[List[int]],
+    merges: List[Tuple[int,int,int]],
+    token_to_id: Optional[Dict[Any,int]] = None,
+    show_corpus_progress: bool = False,
+    show_seq_progress: bool = True
+    ) -> List[List[int]]:
+
+    encoded_corpus = []
+
+    for seq in tqdm.tqdm(corpus, disable=not show_corpus_progress):
+        encoded = bpe_encode(seq, merges, token_to_id=token_to_id, show_progress=show_seq_progress)
+        encoded_corpus.append(encoded)
+
+    return encoded_corpus
+
+###################################################################################
+
+def bpe_decode(encoded_seq: List[int], id_to_token: Dict[int, Any]) -> List[int]:
+    """
+    Decode encoded sequence back to original integer tokens using explicit stack.
+    """
+    out: List[int] = []
+    stack = list(reversed(encoded_seq))
+    
+    while stack:
+        tok = stack.pop()
+        
+        if isinstance(tok, int) and tok in id_to_token:
+            rep = id_to_token[tok]
+            
+        else:
+            rep = tok if isinstance(tok, tuple) else None
+
+        if rep is None:
+            out.append(tok)
+            continue
+
+        tag = rep[0]
+        if tag == 'orig':
+            out.append(rep[1])
+            
+        elif tag == 'pair':
+            stack.append(rep[2])
+            stack.append(rep[1])
+            
+        else:
+            out.append(rep)
+            
+    return out
+
+###################################################################################
+
+def decode_bpe_corpus(encoded_corpus: Iterable[List[int]], id_to_token: Dict[int, Any]) -> List[List[int]]:
+    return [bpe_decode(seq, id_to_token) for seq in encoded_corpus]
+
+###################################################################################
+
+closest_avg_val = lambda lst: (lambda m: min(lst, key=lambda x: abs(x - m)))(sum(lst)/len(lst))
+
+###################################################################################
+
+def binary_matrix_to_rle_toks(binary_matrix,
+                              marker_sidx=256,
+                              marker_clip_val=127,
+                              encode_vels=True,
+                              vels_sidx=128
+                             ):
+
+    pmat = binary_matrix[0]
+
+    mcount = 0
+
+    seq = []
+    
+    for mat in binary_matrix:
+        if pmat != mat:
+            seq.append(min(marker_clip_val, mcount)+marker_sidx)
+            if all(t == 0 for t in pmat):
+                seq.append(0)
+                
+                if encode_vels:
+                    seq.append(0+vels_sidx)
+
+            else:
+                if any(t > 1 for t in pmat):
+                    seq.extend(TMIDIX.flatten(zip([i for i in range(128) if pmat[i] != 0], [pmat[i]+vels_sidx for i in range(128) if pmat[i] != 0])))
+
+                else:
+                    seq.extend([i for i in range(128) if pmat[i] != 0])
+                
+            mcount = 1
+
+        else:
+            mcount += 1
+
+        pmat = mat
+
+    seq.append(min(marker_clip_val, mcount)+marker_sidx)
+    if all(t == 0 for t in pmat):
+        seq.append(0)
+        
+        if encode_vels:
+            seq.append(0+vels_sidx)
+
+    else:
+        if any(t > 1 for t in pmat):
+            seq.extend(TMIDIX.flatten(zip([i for i in range(128) if pmat[i] != 0], [pmat[i]+vels_sidx for i in range(128) if pmat[i] > 1 ])))
+
+        else:
+            seq.extend([i for i in range(128) if pmat[i] != 0])
+
+    return seq
+
+###################################################################################
+
+def rle_toks_to_binary_matrix(rle_toks,
+                              marker_sidx=256,
+                              vels_sidx=128
+                             ):
+
+    rows = []
+    row = []
+    
+    for t in rle_toks:
+        if t >= marker_sidx:
+            if row:
+                rows.append(row)
+
+            row = [t]
+            
+        else:
+            row.append(t)
+
+    if row:
+        rows.append(row)
+
+    matrix = []
+    
+
+    for row in rows:
+        mat = [0] * 128
+        marker = row[0]-marker_sidx
+
+        for p, v in [row[i:i+2] for i in range(1, len(row)-1, 2)]:
+
+            if p != 0 and v-vels_sidx != 0:
+                mat[p] = v-vels_sidx
+
+        matrix.extend([mat] * marker)
+
+    return matrix
+
+###################################################################################
+
+class SAM:
+    def __init__(self):
+        self.len = [0]
+        self.link = [-1]
+        self.next = [dict()]
+        self.last = 0
+
+    def add(self, c):
+        cur = len(self.len)
+        self.len.append(self.len[self.last] + 1)
+        self.link.append(0)
+        self.next.append(dict())
+        p = self.last
+        while p != -1 and c not in self.next[p]:
+            self.next[p][c] = cur
+            p = self.link[p]
+        if p == -1:
+            self.link[cur] = 0
+        else:
+            q = self.next[p][c]
+            if self.len[p] + 1 == self.len[q]:
+                self.link[cur] = q
+            else:
+                clone = len(self.len)
+                self.len.append(self.len[p] + 1)
+                self.link.append(self.link[q])
+                self.next.append(self.next[q].copy())
+                while p != -1 and self.next[p].get(c) == q:
+                    self.next[p][c] = clone
+                    p = self.link[p]
+                self.link[q] = self.link[cur] = clone
+        self.last = cur
+
+###################################################################################
+
+def common_subpatterns(lists):
+    if not lists:
+        return []
+    # Build SAM from first list
+    sam = SAM()
+    for x in lists[0]:
+        sam.add(x)
+
+    m = len(sam.len)
+    # For each state, store minimal matched length across all other lists
+    min_match = [sam.len[i] for i in range(m)]
+
+    # For each other list, compute for every state the longest match ending at that state
+    for arr in lists[1:]:
+        cur = 0
+        l = 0
+        best = [0]*m
+        for x in arr:
+            if x in sam.next[cur]:
+                cur = sam.next[cur][x]
+                l += 1
+            else:
+                while cur != -1 and x not in sam.next[cur]:
+                    cur = sam.link[cur]
+                if cur == -1:
+                    cur = 0
+                    l = 0
+                else:
+                    l = sam.len[cur] + 1
+                    cur = sam.next[cur][x]
+            best[cur] = max(best[cur], l)
+        # propagate best values along suffix links in decreasing len order
+        order = sorted(range(m), key=lambda i: sam.len[i], reverse=True)
+        for v in order:
+            p = sam.link[v]
+            if p != -1:
+                best[p] = max(best[p], min(best[v], sam.len[p]))
+        for i in range(m):
+            min_match[i] = min(min_match[i], best[i])
+
+    # collect all distinct substrings: each state contributes lengths (link.len+1 .. min_match[state])
+    res = set()
+    for v in range(1, m):
+        low = sam.len[sam.link[v]] + 1
+        high = min_match[v]
+        for L in range(low, high+1):
+            # recover one substring of length L ending at this state by walking back from a position:
+            # To avoid expensive reconstruction for every L, we reconstruct by scanning the first list.
+            pass
+
+    # Efficient reconstruction: collect all end positions for each state by walking the first list
+    # Build transitions to find substrings by scanning first list and recording (state, length) pairs
+    cur = 0; l = 0
+    pos_states = []
+    for x in lists[0]:
+        if x in sam.next[cur]:
+            cur = sam.next[cur][x]; l += 1
+        else:
+            while cur != -1 and x not in sam.next[cur]:
+                cur = sam.link[cur]
+            if cur == -1:
+                cur = 0; l = 0
+            else:
+                l = sam.len[cur] + 1
+                cur = sam.next[cur][x]
+        pos_states.append((cur, l))
+
+    # For each position, enumerate valid substring lengths and add actual slices
+    n0 = len(lists[0])
+    for i,(state, length) in enumerate(pos_states):
+        maxlen = min(length, min_match[state])
+        minlen = sam.len[sam.link[state]] + 1
+        for L in range(minlen, maxlen+1):
+            start = i - L + 1
+            res.add(tuple(lists[0][start:start+L]))
+
+    return [list(t) for t in sorted(res, key=lambda x:(len(x), x))]
+
+###################################################################################
+
+def extract_non_overlapping_chords(escore_notes, max_dur=-1):
+
+    cscore = chordify_score([1000, escore_notes])
+
+    no_chords = []
+    
+    for i, c in enumerate(cscore[:-1]):
+        ntime = cscore[i+1][0][1]
+        
+        if max_dur > 0:
+            cval = max_dur
+    
+        else:
+            cval = closest_avg_val([e[2] for e in c])
+            
+        if c[0][1]+cval <= ntime:
+            no_chords.append(c)
+    
+    no_chords.append(cscore[-1])
+
+    return no_chords
+
+###################################################################################
+
+def escore_chord_to_chord_token(escore_chord,
+                                use_full_chords=False,
+                                shift_chords=False
+                               ):
+
+    if use_full_chords:
+        CHORDS = ALL_CHORDS_FULL
+
+    else:
+        CHORDS = ALL_CHORDS_SORTED
+
+    pitches = sorted(set([e[4] for e in escore_chord if e[3] != 9]))
+
+    if len(pitches) > 1:
+        tones_chord = sorted(set([p % 12 for p in pitches]))
+
+        if tones_chord not in CHORDS:
+            tones_chord = check_and_fix_tones_chord(tones_chord, use_full_chords=use_full_chords)
+
+        if shift_chords:
+            return CHORDS.index(tones_chord)+12
+
+        else:
+            return CHORDS.index(tones_chord)
+
+    elif len(pitches) == 1:
+        if shift_chords:
+            return pitches[0] % 12
+
+        else:
+            return CHORDS.index([pitches[0] % 12])
+        
+    else:
+        return -1
+
+###################################################################################
+
+def transpose_chord_token(chord_token, transpose_value, use_full_chords=False):
+
+    if use_full_chords:
+        CHORDS = ALL_CHORDS_FULL
+
+    else:
+        CHORDS = ALL_CHORDS_SORTED
+
+    if 0 <= chord_token < len(CHORDS):
+        tchord = CHORDS[chord_token]
+    
+        t_tchord = transpose_tones_chord(tchord, transpose_value)
+
+        if t_tchord in CHORDS:
+            return CHORDS.index(t_tchord)
+
+        return chord_token
+
+    return chord_token
+
+###################################################################################
+
+ALL_CHORDS_DELTAS = [
+ [2, 2, 2, 2, 2, 2], [2, 2, 2, 2, 4], [2, 2, 2, 3, 3], [2, 2, 2, 6],
+ [2, 2, 3, 5], [2, 2, 4, 4], [2, 2, 8], [2, 3, 3, 4], [2, 3, 7], [2, 4, 6],
+ [2, 5, 5], [2, 10], [3, 3, 3, 3], [3, 3, 6], [3, 4, 5], [3, 9], [4, 4, 4],
+ [4, 8], [5, 7], [6, 6]
+ ]
+
+###################################################################################
+
+def encode_delta_chord_tok(tones_chord):
+    if len(tones_chord) > 1:
+        return (ALL_CHORDS_DELTAS.index(
+                    list(sorted([(12 - tones_chord[-1] + tones_chord[0])] + [b-a
+                           for a, b in zip(tones_chord[:-1], 
+                                           tones_chord[1:])
+                          ]))) * 12) + tones_chord[0]
+
+    else:
+        return (len(ALL_CHORDS_DELTAS) * 12) + tones_chord[0]
+
+###################################################################################
+    
+def encode_delta_chord_tok_raw(tones_chord):
+    if len(tones_chord) > 1:
+        return ALL_CHORDS_DELTAS.index(
+                    list(sorted([(12 - tones_chord[-1] + tones_chord[0])] + [b-a
+                           for a, b in zip(tones_chord[:-1], 
+                                           tones_chord[1:])
+                          ])))
+
+    else:
+        return len(ALL_CHORDS_DELTAS)
+
+###################################################################################
+    
+def decode_delta_chord_tok(delta_chord_tok):
+
+    cho_tok = delta_chord_tok // 12
+    base_tone = delta_chord_tok % 12
+
+    if cho_tok < len(ALL_CHORDS_DELTAS):
+        delta_cho = ALL_CHORDS_DELTAS[cho_tok]
+    
+        tones_chord = [base_tone]
+    
+        for d in delta_cho:
+            tones_chord.append((tones_chord[-1]+d) % 12)
+        
+        return sorted(set(tones_chord))
+
+    else:
+        return [base_tone]
+
+###################################################################################
+    
+def decode_delta_chord_tok_raw(delta_chord_tok):
+
+    if delta_chord_tok < len(ALL_CHORDS_DELTAS):
+        return ALL_CHORDS_DELTAS[delta_chord_tok]
+
+    else:
+        return [0]
+
+###################################################################################
+
+def values_percentile(data, p):
+    """
+    Return the p-th percentile of a list of ints using pure Python.
+    Uses linear interpolation (same definition as NumPy).
+    """
+    if not data:
+        raise ValueError("data must not be empty")
+    if not (0 <= p <= 100):
+        raise ValueError("p must be between 0 and 100")
+
+    xs = sorted(data)
+    n = len(xs)
+
+    # fractional index
+    k = (p / 100) * (n - 1)
+    i = int(k)
+    f = k - i
+
+    if f == 0:
+        return xs[i]
+    return xs[i] + f * (xs[i + 1] - xs[i])
+
+###################################################################################
+
+def set_of_sublists(list_of_lists):
+    seen = set()
+    add = seen.add
+    
+    for sub in list_of_lists:
+        add(tuple(sub))
+        
+    return [list(t) for t in seen]
+
+###################################################################################
+
+def escore_notes_run_time(escore_notes, time_idx=1, dur_idx=2):
+    
+    last_time = escore_notes[-1][time_idx]
+    last_notes = [e for e in escore_notes if e[time_idx] == last_time]
+    max_dur = max([e[dur_idx] for e in last_notes])
+    
+    return [last_time+max_dur, last_time]
+
+###################################################################################
+
+def find_best_ngram_match(
+    src_counter: Counter, 
+    counter_pool: List[Counter],
+    ngram_weights: Optional[Dict[int, float]] = None,
+    min_count: int = 2  # Filter out ngrams appearing less than this (removes noise)
+) -> Optional[Tuple[int, float, float, float]]:
+    """
+    Finds the best matching Counter using Log-Scaled Weighted Cosine Similarity,
+    with noise filtering to prevent long-tail vocabulary mismatch penalties.
+    
+    Args:
+        src_counter: The Counter object to match against.
+        counter_pool: A list of Counter objects to search through.
+        ngram_weights: A dict mapping ngram LENGTHS to importance weights.
+                       Example: {1: 1.0, 2: 2.5, 3: 4.0}. 
+                       If None, all lengths are weighted equally (1.0).
+        min_count: Minimum count required for an ngram to be included in the comparison.
+                   Setting to 2 removes "hapax legomena" (count=1 noise), drastically
+                   improving profile similarity for text/ngram data.
+        
+    Returns:
+        A tuple of (best_matching_index, best_similarity, pool_mean, pool_std) 
+        or None if no viable match is found.
+    """
+    if not counter_pool:
+        return None
+
+    # Filter out zero/negative counts
+    src = +src_counter
+    if not src:
+        return None
+
+    if ngram_weights is None:
+        ngram_weights = {}
+    
+    # --- FILTERING & LOG SCALING ---
+    # 1. Drop ngrams below min_count (removes the noisy long-tail)
+    # 2. Apply 1 + log(count) to compress the dynamic range
+    # 3. Weight by the LENGTH of the ngram key (e.g., len((1, 6)) == 2)
+    def scale_counter(counter: Counter) -> Dict[tuple, float]:
+        scaled = {}
+        for ngram_key, count in counter.items():
+            if count >= min_count:
+                weight = ngram_weights.get(len(ngram_key), 1.0)
+                scaled[ngram_key] = (1.0 + math.log(count)) * weight
+        return scaled
+
+    src_scaled = scale_counter(src)
+    
+    # If source becomes empty after filtering, we can't match
+    if not src_scaled:
+        return None
+
+    src_magnitude = math.sqrt(sum(v ** 2 for v in src_scaled.values()))
+    src_raw_total = sum(v for k, v in src.items() if k in src_scaled) # Tiebreaker magnitude
+
+    best_index = -1
+    best_similarity = -1.0
+    best_cand_raw_total = -1.0
+    best_cand_items = []
+    
+    all_similarities = []
+
+    for idx, candidate in enumerate(counter_pool):
+        cand = +candidate
+        if not cand:
+            all_similarities.append(0.0)
+            continue
+
+        cand_scaled = scale_counter(cand)
+        
+        if not cand_scaled:
+            all_similarities.append(0.0)
+            continue
+
+        # --- COSINE SIMILARITY ---
+        dot_product = 0.0
+        cand_magnitude_sq = 0.0
+        
+        # Iterate over candidate keys to find intersections and calculate magnitude
+        for ngram_key, c_val in cand_scaled.items():
+            cand_magnitude_sq += c_val ** 2
+            
+            s_val = src_scaled.get(ngram_key)
+            if s_val is not None:
+                dot_product += s_val * c_val
+                
+        cand_magnitude = math.sqrt(cand_magnitude_sq)
+        
+        # Calculate Cosine Similarity
+        if cand_magnitude == 0 or src_magnitude == 0:
+            similarity = 0.0
+        else:
+            similarity = dot_product / (src_magnitude * cand_magnitude)
+            
+        all_similarities.append(similarity)
+
+        # --- Tiebreaker: Raw Magnitude Distance ---
+        cand_raw_total = sum(v for k, v in cand.items() if k in cand_scaled)
+        magnitude_distance = abs(src_raw_total - cand_raw_total)
+
+        # --- Comparison Logic ---
+        if similarity > best_similarity:
+            best_index = idx
+            best_similarity = similarity
+            best_cand_raw_total = cand_raw_total
+            best_cand_items = sorted(cand.items())
+            
+        elif similarity == best_similarity:
+            best_mag_distance = abs(src_raw_total - best_cand_raw_total)
+            
+            if magnitude_distance < best_mag_distance:
+                best_index = idx
+                best_cand_raw_total = cand_raw_total
+                best_cand_items = sorted(cand.items())
+                
+            elif magnitude_distance == best_mag_distance:
+                current_items = sorted(cand.items())
+                if current_items < best_cand_items:
+                    best_index = idx
+                    best_cand_raw_total = cand_raw_total
+                    best_cand_items = current_items
+
+    if best_index == -1:
+        return None
+
+    # --- Calculate Overall Pool Statistics ---
+    valid_sim_count = len(all_similarities)
+    
+    if valid_sim_count > 0:
+        pool_mean = sum(all_similarities) / valid_sim_count
+        
+        if valid_sim_count > 1:
+            variance = sum((s - pool_mean) ** 2 for s in all_similarities) / (valid_sim_count - 1)
+            pool_std = math.sqrt(variance)
+        else:
+            pool_std = 0.0
+    else:
+        pool_mean = 0.0
+        pool_std = 0.0
+
+    return best_index, best_similarity, pool_mean, pool_std
+
+###################################################################################
+
+def remove_repeating_patterns(lst: list[int]) -> list[int]:
+    """
+    Removes consecutive repeating values AND consecutive repeating patterns 
+    strictly from left to right.
+    
+    Examples:
+        [1, 2, 2, 3]                            -> [1, 2, 3]
+        [1, 2, 3, 4, 3, 3, 2, 1, 2, 1, 2]      -> [1, 2, 3, 4, 3, 2, 1, 2]
+        [1, 2, 1, 2, 1, 2]                      -> [1, 2]
+        [1, 2, 3, 1, 2, 3]                      -> [1, 2, 3]
+        [1, 1, 1, 1]                            -> [1]
+    """
+    n = len(lst)
+    if n <= 1:
+        return lst[:]
+
+    # deque provides O(1) appends and O(1) pops from the right end,
+    # while perfectly preserving the original left-to-right history.
+    res = deque()
+    res.append(lst[0])
+    
+    for i in range(1, n):
+        val = lst[i]
+        res.append(val)
+        
+        # The maximum possible pattern length is half the current sequence length
+        max_len = len(res) >> 1
+        
+        # Check from the longest possible pattern down to 1
+        for p_len in range(max_len, 0, -1):
+            match = True
+            for j in range(p_len):
+                # Compare the right-most p_len elements with the p_len elements just before them
+                if res[-p_len + j] != res[-2 * p_len + j]:
+                    match = False
+                    break
+            
+            if match:
+                # Pattern found! Pop the matching elements off the end.
+                for _ in range(p_len):
+                    res.pop()
+                break
+                
+    return list(res)
 
 ###################################################################################
 

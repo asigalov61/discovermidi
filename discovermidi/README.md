@@ -70,11 +70,13 @@ _The dataset is packaged with clear installation and optional dependency instruc
 !pip install scikit-learn
 !pip install scipy
 !pip install matplotlib
-!pip install hf-transfer
 !pip install huggingface_hub
 !pip install torch
 !pip install midirenderer
 !pip install mididoctor
+!pip install midisplitter
+!pip install midicap
+!pip install midiano
 !pip install numpy==1.26.4
 ```
 
@@ -93,6 +95,9 @@ _The dataset is packaged with clear installation and optional dependency instruc
 !pip install einops
 !pip install einx
 !pip install nltk
+!pip install pyphen
+!pip install pronouncing
+!pip install midisim
 ```
 
 ### Optional packages
@@ -279,9 +284,10 @@ Discover-MIDI-Dataset/              # Dataset root dir
 ```bibtex
 @misc{project_los_angeles_2025,
 	author       = { Project Los Angeles },
-	title        = { Discover-MIDI-Dataset },
+	title        = { Discover-MIDI-Dataset (Revision 0eaecb5) },
 	year         = 2025,
 	url          = { https://huggingface.co/datasets/projectlosangeles/Discover-MIDI-Dataset },
+	doi          = { 10.57967/hf/7361 },
 	publisher    = { Hugging Face }
 }
 ```
@@ -321,11 +327,11 @@ Discover-MIDI-Dataset/              # Dataset root dir
   title        = {Tegridy MIDI Dataset: Ultimate Multi-Instrumental MIDI Dataset for MIR and Music AI purposes},
   author       = {Alex Lev},
   publisher    = {Project Los Angeles / Tegridy Code},
-  year         = {2025},
+  year         = {2026},
   url          = {https://github.com/asigalov61/Tegridy-MIDI-Dataset}
 ```
 
 ***
 
 ### Project Los Angeles
-### Tegridy Code 2025
+### Tegridy Code 2026
