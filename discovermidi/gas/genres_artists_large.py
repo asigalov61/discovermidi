@@ -4,7 +4,7 @@ r'''############################################################################
 ################################################################################
 #
 #
-#	    Genres Python Module
+#	    Genres Artists Large Python Module
 #	    Version 1.0
 #
 #	    Project Los Angeles
@@ -16,7 +16,7 @@ r'''############################################################################
 #
 ################################################################################
 #
-#       Copyright 2025 Project Los Angeles / Tegridy Code
+#       Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #       Licensed under the Apache License, Version 2.0 (the "License");
 #       you may not use this file except in compliance with the License.
@@ -32,13 +32,6 @@ r'''############################################################################
 #
 ################################################################################
 '''
-#===============================================================================================================
-
-from collections import defaultdict
-from typing import Dict, List, Any
-import copy
-
-#===============================================================================================================
 
 music_genres = {
     
@@ -1606,139 +1599,6 @@ music_genres = {
     ]
 }
 
-#===============================================================================================================
-
-NestedIn = Dict[str, Dict[str, Dict[str, List[str]]]]
-
-def transpose_top_key(
-    data: NestedIn,
-    *,
-    top_key: str = "artist",
-    dedupe_hashes: bool = True
-    ) -> Dict[str, Any]:
-    
-    """
-    Transpose a nested dict that is always structured as:
-      Genre -> Artist -> Song -> list[md5]
-
-    Supported top_key values (case-insensitive):
-      - "genre"  -> returns a deep copy of the input (Genre -> Artist -> Song -> list[md5])
-      - "artist" -> Artist -> Genre -> Song -> list[md5]
-      - "song"   -> Song -> Genre -> Artist -> list[md5]
-      - "md5"    -> md5 -> Genre -> Artist -> list[Song]
-
-    Parameters
-    - data: input nested dictionary (Genre -> Artist -> Song -> list[md5])
-    - top_key: desired top-level key
-    - dedupe_hashes: when True:
-        * for artist/song/genre outputs: deduplicate md5 lists preserving first-seen order
-        * for md5 output: deduplicate song lists preserving first-seen order
-
-    Returns
-    - new nested dictionary with the requested top-level key
-    """
-    
-    if data is None:
-        return {}
-
-    key = (top_key or "artist").strip().lower()
-    if key not in {"artist", "song", "genre", "md5"}:
-        raise ValueError("top_key must be one of: 'artist', 'song', 'genre', 'md5'")
-
-    def ensure_list(x: Any) -> List[str]:
-        if x is None:
-            return []
-        if isinstance(x, list):
-            return list(x)
-        if isinstance(x, (str, bytes)):
-            return [x]
-        try:
-            return list(x)
-        except Exception:
-            return [x]
-
-    def dedupe_preserve_order(seq: List[str]) -> List[str]:
-        seen = set()
-        out = []
-        for item in seq:
-            if item not in seen:
-                seen.add(item)
-                out.append(item)
-        return out
-
-    # If user wants genre as top key, return a deep copy of the input
-    if key == "genre":
-        return copy.deepcopy(data)
-
-    # Build result using nested defaultdicts for convenience
-    if key in {"artist", "song"}:
-        result = defaultdict(lambda: defaultdict(dict))
-        for genre, artists in data.items():
-            if not isinstance(artists, dict):
-                continue
-            for artist, songs in artists.items():
-                if not isinstance(songs, dict):
-                    continue
-                for song, hashes in songs.items():
-                    hashes_list = ensure_list(hashes)
-                    hashes_list = copy.deepcopy(hashes_list)
-                    if dedupe_hashes:
-                        hashes_list = dedupe_preserve_order(hashes_list)
-
-                    if key == "artist":
-                        top = artist
-                        second = genre
-                        third = song
-                    else:  # key == "song"
-                        top = song
-                        second = genre
-                        third = artist
-
-                    if second not in result[top]:
-                        result[top][second] = {}
-
-                    existing = result[top][second].get(third)
-                    if existing is None:
-                        result[top][second][third] = hashes_list
-                    else:
-                        combined = existing + hashes_list
-                        if dedupe_hashes:
-                            combined = dedupe_preserve_order(combined)
-                        result[top][second][third] = combined
-
-        return {
-            top_val: {second_val: dict(third_map) for second_val, third_map in seconds.items()}
-            for top_val, seconds in result.items()
-        }
-
-    # key == "md5": produce md5 -> Genre -> Artist -> list[Song]
-    md5_index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    for genre, artists in data.items():
-        if not isinstance(artists, dict):
-            continue
-        for artist, songs in artists.items():
-            if not isinstance(songs, dict):
-                continue
-            for song, hashes in songs.items():
-                hashes_list = ensure_list(hashes)
-                for h in hashes_list:
-                    # append song under md5 -> genre -> artist
-                    md5_index[h][genre][artist].append(song)
-
-    # Optionally dedupe song lists while preserving order
-    if dedupe_hashes:
-        for h, genres in md5_index.items():
-            for genre, artists in genres.items():
-                for artist, song_list in artists.items():
-                    md5_index[h][genre][artist] = dedupe_preserve_order(song_list)
-
-    # Convert nested defaultdicts to normal dicts
-    return {
-        h: {genre: {artist: list(songs) for artist, songs in artists.items()}
-            for genre, artists in genres.items()}
-        for h, genres in md5_index.items()
-    }
-
 ################################################################################
-# This is the end of Genres Python module
+# This is the end of Genres Artists Large Python module
 ################################################################################

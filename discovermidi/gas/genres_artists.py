@@ -4,7 +4,7 @@ r'''############################################################################
 ################################################################################
 #
 #
-#	    Genres Python Module
+#	    Genres Artists Python Module
 #	    Version 1.0
 #
 #	    Project Los Angeles
@@ -16,7 +16,7 @@ r'''############################################################################
 #
 ################################################################################
 #
-#       Copyright 2025 Project Los Angeles / Tegridy Code
+#       Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #       Licensed under the Apache License, Version 2.0 (the "License");
 #       you may not use this file except in compliance with the License.
@@ -32,13 +32,6 @@ r'''############################################################################
 #
 ################################################################################
 '''
-#===============================================================================================================
-
-from collections import defaultdict
-from typing import Dict, List, Any
-import copy
-
-#===============================================================================================================
 
 music_genres = {
     
@@ -82,66 +75,6 @@ music_genres = {
         {
             "artist": "Katy Perry",
             "description": "Famous for catchy anthems and vibrant visuals that capture modern pop energy."
-        },
-        {
-            "artist": "Britney Spears",
-            "description": "Pop icon famous for catchy hits and stage presence."
-        },
-        {
-            "artist": "Celine Dion",
-            "description": "Powerhouse vocalist with emotive pop ballads."
-        },
-        {
-            "artist": "Spice Girls",
-            "description": "1990s girl group symbolizing 'Girl Power' and pop anthems."
-        },
-        {
-            "artist": "Abba",
-            "description": "Swedish pop legends famous for their infectious melodies and harmonies."
-        },
-        {
-            "artist": "Mariah Carey",
-            "description": "Singer-songwriter with powerful vocals and timeless ballads."
-        },
-        {
-            "artist": "Backstreet Boys",
-            "description": "Popular boy band known for their harmonies and global hits."
-        },
-        {
-            "artist": "Elton John",
-            "description": "Iconic pianist and singer known for his flamboyant style and timeless melodies."
-        },
-        {
-            "artist": "Dua Lipa",
-            "description": "Disco-revival pop with modern production."
-        },
-        {
-            "artist": "Bruno Mars",
-            "description": "Retro-inspired pop, funk, and R&B showman."
-        },
-        {
-            "artist": "Shawn Mendes",
-            "description": "Soft-pop heartthrob with guitar-driven hits."
-        },
-        {
-            "artist": "Olivia Rodrigo",
-            "description": "Gen-Z pop-punk and balladry sensation."
-        },
-        {
-            "artist": "Harry Styles",
-            "description": "Ex-One Direction member turned eclectic pop-rock star."
-        },
-        {
-            "artist": "Doja Cat",
-            "description": "Playful pop-rap with viral appeal."
-        },
-        {
-            "artist": "The Weeknd",
-            "description": "Moody pop-R&B with cinematic themes."
-        },
-        {
-            "artist": "Miley Cyrus",
-            "description": "Genre-shifting pop and rock rebel."
         }
     ],
     "Rock": [
@@ -184,62 +117,6 @@ music_genres = {
         {
             "artist": "Foo Fighters",
             "description": "Modern rock stalwarts known for dynamic energy and anthemic, guitar-driven sound."
-        },
-        {
-            "artist": "Elvis Presley",
-            "description": "The 'King of Rock and Roll,' pioneer of rock music."
-        },
-        {
-            "artist": "Rolling Stones",
-            "description": "Influential rock band with blues-inspired sound."
-        },
-        {
-            "artist": "U2",
-            "description": "Irish rock band known for anthemic songs and activism."
-        },
-        {
-            "artist": "Guns N Roses",
-            "description": "Hard rock band with gritty, rebellious anthems."
-        },
-        {
-            "artist": "Red Hot Chili Peppers",
-            "description": "Funk-rock band known for their dynamic live performances."
-        },
-        {
-            "artist": "Aerosmith",
-            "description": "Blues-inspired rock band with iconic riffs and powerful vocals."
-        },
-        {
-            "artist": "Genesis",
-            "description": "Prog-rock pioneers with epic storytelling and innovative compositions."
-        },
-        {
-            "artist": "Bon Jovi",
-            "description": "Arena rock masters known for their sing-along anthems."
-        },
-        {
-            "artist": "Fleetwood Mac",
-            "description": "Blended rock and folk into one of the most influential sounds in history."
-        },
-        {
-            "artist": "Bruce Springsteen",
-            "description": "Heartland rock poet of working-class America."
-        },
-        {
-            "artist": "David Bowie",
-            "description": "Chameleonic rock icon embracing personas."
-        },
-        {
-            "artist": "The Doors",
-            "description": "Psychedelic rock with poetic mystique."
-        },
-        {
-            "artist": "The Clash",
-            "description": "Punk-rock rebels with reggae and politics."
-        },
-        {
-            "artist": "Radiohead",
-            "description": "Alternative rock innovators."
         }
     ],
     "Hip-Hop/Rap": [
@@ -282,22 +159,6 @@ music_genres = {
         {
             "artist": "Lil Wayne",
             "description": "A prolific wordsmith known for inventive wordplay and influential style."
-        },
-        {
-            "artist": "Run-D.M.C.",
-            "description": "Pioneers of hip-hop who blended rap and rock to define a genre."
-        },
-        {
-            "artist": "Kanye West",
-            "description": "Controversial production savant."
-        },
-        {
-            "artist": "OutKast",
-            "description": "Southern rap eccentrics."
-        },
-        {
-            "artist": "Missy Elliott",
-            "description": "Futuristic rap pioneer."
         }
     ],
     "R&B/Soul": [
@@ -310,7 +171,7 @@ music_genres = {
             "description": "Known for smooth, soulful melodies paired with messages that resonate."
         },
         {
-            "artist": "Beyonc\u00e9",
+            "artist": "Beyoncé",
             "description": "Modern icon celebrated for vocal prowess, dynamic performances, and innovative production."
         },
         {
@@ -340,38 +201,6 @@ music_genres = {
         {
             "artist": "Luther Vandross",
             "description": "Celebrated for his silky voice and the ability to convey deep emotional narratives."
-        },
-        {
-            "artist": "James Brown",
-            "description": "Godfather of soul and funk."
-        },
-        {
-            "artist": "Earth, Wind & Fire",
-            "description": "Cosmic funk-disco."
-        },
-        {
-            "artist": "Curtis Mayfield",
-            "description": "Civil rights soul poet."
-        },
-        {
-            "artist": "Chaka Khan",
-            "description": "Queen of funk-soul."
-        },
-        {
-            "artist": "Barry White",
-            "description": "Velvet-voiced love man."
-        },
-        {
-            "artist": "Sly & The Family Stone",
-            "description": "Psychedelic funk collective."
-        },
-        {
-            "artist": "Tina Turner",
-            "description": "Soul-rock dynamo."
-        },
-        {
-            "artist": "Lionel Richie",
-            "description": "Smoky ballad soul."
         }
     ],
     "Electronic/Dance": [
@@ -396,7 +225,7 @@ music_genres = {
             "description": "Pioneered modern dubstep with energetic drops and innovative production techniques."
         },
         {
-            "artist": "Ti\u00ebsto",
+            "artist": "Tiësto",
             "description": "Legendary DJ and producer known for his dynamic live performances and anthemic tracks."
         },
         {
@@ -414,46 +243,6 @@ music_genres = {
         {
             "artist": "Armin van Buuren",
             "description": "A key figure in trance music, renowned for mesmerizing DJ sets and uplifting productions."
-        },
-        {
-            "artist": "Depeche Mode",
-            "description": "Synth-pop pioneers shaping electronic music."
-        },
-        {
-            "artist": "Pet Shop Boys",
-            "description": "Dance-pop duo with witty lyricism."
-        },
-        {
-            "artist": "Jean-Michel Jarre",
-            "description": "Pioneering electronic composer known for atmospheric synth landscapes."
-        },
-        {
-            "artist": "The Prodigy",
-            "description": "Rave-era big beat anarchists."
-        },
-        {
-            "artist": "Swedish House Mafia",
-            "description": "Festival house supergroup."
-        },
-        {
-            "artist": "deadmau5",
-            "description": "Progressive house with mouse helmets."
-        },
-        {
-            "artist": "Aphex Twin",
-            "description": "IDM experimentalist."
-        },
-        {
-            "artist": "Tiesto",
-            "description": "Trance-turned-mainstream DJ."
-        },
-        {
-            "artist": "Fatboy Slim",
-            "description": "Big beat party starter."
-        },
-        {
-            "artist": "Underworld",
-            "description": "Techno-pop innovators."
         }
     ],
     "Country": [
@@ -496,26 +285,6 @@ music_genres = {
         {
             "artist": "Miranda Lambert",
             "description": "A fierce and authentic voice in country music known for raw, honest lyrical storytelling."
-        },
-        {
-            "artist": "Alan Jackson",
-            "description": "Traditional country storytelling."
-        },
-        {
-            "artist": "Brooks Garth",
-            "description": "90s country megastar with honky-tonk flair."
-        },
-        {
-            "artist": "Willie Nelson",
-            "description": "Outlaw country icon."
-        },
-        {
-            "artist": "Kenny Rogers",
-            "description": "Storytelling gambler."
-        },
-        {
-            "artist": "Chris Stapleton",
-            "description": "Soulful country powerhouse."
         }
     ],
     "Classical": [
@@ -558,106 +327,6 @@ music_genres = {
         {
             "artist": "Claude Debussy",
             "description": "Pioneered musical impressionism with innovative harmonies that evoke rich, evocative imagery."
-        },
-        {
-            "artist": "Fr\u00e9d\u00e9ric Chopin",
-            "description": "Virtuoso pianist and composer known for his expressive and intricate works."
-        },
-        {
-            "artist": "Isaac Alb\u00e9niz",
-            "description": "Spanish composer and virtuoso pianist known for his nationalist works, including 'Iberia'."
-        },
-        {
-            "artist": "Mily Balakirev",
-            "description": "Russian composer and pianist, a key figure in the Russian Five, known for 'Islamey'."
-        },
-        {
-            "artist": "Alexander Borodin",
-            "description": "Russian Romantic composer known for his symphonies and the opera 'Prince Igor'."
-        },
-        {
-            "artist": "Johannes Brahms",
-            "description": "Romantic-era composer known for his symphonies, concertos, and 'Hungarian Dances'."
-        },
-        {
-            "artist": "Friedrich Burgm\u00fcller",
-            "description": "German composer renowned for his elegant and expressive piano \u00e9tudes."
-        },
-        {
-            "artist": "Christmas Music",
-            "description": "Traditional and classical works associated with holiday celebrations, including hymns and carols."
-        },
-        {
-            "artist": "Muzio Clementi",
-            "description": "Italian composer and pianist, influential in developing piano technique and compositions."
-        },
-        {
-            "artist": "Mikhail Glinka",
-            "description": "The father of Russian classical music, known for his operas and nationalist works."
-        },
-        {
-            "artist": "Leopold Godowsky",
-            "description": "Renowned pianist and composer known for complex piano transcriptions and \u00e9tudes."
-        },
-        {
-            "artist": "Enrique Granados",
-            "description": "Spanish composer known for his expressive piano music, especially 'Goyescas'."
-        },
-        {
-            "artist": "Edvard Grieg",
-            "description": "Norwegian composer famed for 'Peer Gynt' and his nationalist influences."
-        },
-        {
-            "artist": "Joseph Haydn",
-            "description": "A father of the symphony and string quartet, a crucial figure in Classical music."
-        },
-        {
-            "artist": "Felix Mendelssohn",
-            "description": "German composer known for 'Songs Without Words' and 'A Midsummer Night\u2019s Dream'."
-        },
-        {
-            "artist": "Moritz Moszkowski",
-            "description": "German composer and pianist, admired for his lyrical and technical piano compositions."
-        },
-        {
-            "artist": "Modest Mussorgsky",
-            "description": "Russian composer known for 'Pictures at an Exhibition' and dramatic orchestral works."
-        },
-        {
-            "artist": "Sergei Prokofiev",
-            "description": "20th-century Russian composer famous for 'Peter and the Wolf' and innovative orchestration."
-        },
-        {
-            "artist": "Sergei Rachmaninoff",
-            "description": "Russian pianist and composer known for expansive, emotive works like his piano concertos."
-        },
-        {
-            "artist": "Maurice Ravel",
-            "description": "French composer renowned for 'Bol\u00e9ro' and exquisite orchestral textures."
-        },
-        {
-            "artist": "Robert Schumann",
-            "description": "German composer famous for his lyrical piano works and orchestral pieces."
-        },
-        {
-            "artist": "Alexander Scriabin",
-            "description": "Russian composer known for innovative harmonies and mystical musical concepts."
-        },
-        {
-            "artist": "Christian Sinding",
-            "description": "Norwegian composer of piano and orchestral music with Romantic influences."
-        },
-        {
-            "artist": "Philip Glass",
-            "description": "Minimalist pioneer."
-        },
-        {
-            "artist": "Hans Zimmer",
-            "description": "Film score titan."
-        },
-        {
-            "artist": "Yo-Yo Ma",
-            "description": "Cellist bridging genres."
         }
     ],
     "Jazz": [
@@ -700,26 +369,6 @@ music_genres = {
         {
             "artist": "Sarah Vaughan",
             "description": "Distinguished by her rich tone and remarkable technique, influencing generations of vocalists."
-        },
-        {
-            "artist": "Frank Sinatra",
-            "description": "Swing-era icon with timeless vocal jazz."
-        },
-        {
-            "artist": "Dave Brubeck",
-            "description": "Cool jazz innovator."
-        },
-        {
-            "artist": "Herbie Hancock",
-            "description": "Fusion keyboard pioneer."
-        },
-        {
-            "artist": "Wynton Marsalis",
-            "description": "Neo-traditional trumpet virtuoso."
-        },
-        {
-            "artist": "Kamasi Washington",
-            "description": "Modern jazz epic storyteller."
         }
     ],
     "Blues": [
@@ -744,7 +393,7 @@ music_genres = {
             "description": "An iconic guitarist known for bridging traditional blues and modern rock influences."
         },
         {
-            "artist": "Howlin\u2019 Wolf",
+            "artist": "Howlin’ Wolf",
             "description": "Noted for his deep, gravelly vocals and commanding stage presence that defined raw blues."
         },
         {
@@ -762,10 +411,6 @@ music_genres = {
         {
             "artist": "Otis Rush",
             "description": "A key architect of the Chicago blues sound with passionate and expressive guitar work."
-        },
-        {
-            "artist": "Eric Clapton",
-            "description": "Legendary guitarist blending blues, rock, and soul."
         }
     ],
     "Reggae": [
@@ -808,30 +453,6 @@ music_genres = {
         {
             "artist": "Steel Pulse",
             "description": "A roots reggae band renowned for socially conscious lyrics and dynamic live performances."
-        },
-        {
-            "artist": "UB40",
-            "description": "British reggae band known for covers and originals."
-        },
-        {
-            "artist": "Shaggy",
-            "description": "Dancehall-pop crossover."
-        },
-        {
-            "artist": "Sean Paul",
-            "description": "Dancehall hitmaker."
-        },
-        {
-            "artist": "Damian Marley",
-            "description": "Bob's son, blending reggae and hip-hop."
-        },
-        {
-            "artist": "Sizzla",
-            "description": "Conscious dancehall firebrand."
-        },
-        {
-            "artist": "Chronixx",
-            "description": "Modern roots revivalist."
         }
     ],
     "Metal": [
@@ -874,26 +495,6 @@ music_genres = {
         {
             "artist": "Sepultura",
             "description": "A Brazilian metal band celebrated for merging thrash, death, and tribal influences."
-        },
-        {
-            "artist": "Tool",
-            "description": "Progressive metal with polyrhythms."
-        },
-        {
-            "artist": "Motorhead",
-            "description": "Speed metal ancestors."
-        },
-        {
-            "artist": "Opeth",
-            "description": "Death-prog fusion."
-        },
-        {
-            "artist": "Gojira",
-            "description": "Eco-conscious tech-death."
-        },
-        {
-            "artist": "Mastodon",
-            "description": "Sludge metal storytellers."
         }
     ],
     "Folk": [
@@ -936,14 +537,6 @@ music_genres = {
         {
             "artist": "Leonard Cohen",
             "description": "Celebrated for his deep, resonant voice and literary songwriting transcending folk boundaries."
-        },
-        {
-            "artist": "Traditional",
-            "description": "Rooted in cultural heritage and oral traditions."
-        },
-        {
-            "artist": "Israel Folk",
-            "description": "Folk music reflecting Israeli history."
         }
     ],
     "Latin": [
@@ -964,7 +557,7 @@ music_genres = {
             "description": "Merges rock with Latin rhythms and meaningful lyrics, impacting Latin music worldwide."
         },
         {
-            "artist": "Rosal\u00eda",
+            "artist": "Rosalía",
             "description": "Innovative artist merging flamenco traditions with contemporary urban sounds."
         },
         {
@@ -986,42 +579,6 @@ music_genres = {
         {
             "artist": "Selena",
             "description": "Forever cherished for her vibrant voice and cultural impact, she remains an enduring Latin icon."
-        },
-        {
-            "artist": "Santana",
-            "description": "Fusion of rock, Latin rhythms, and blues."
-        },
-        {
-            "artist": "Gloria Estefan",
-            "description": "Queen of Latin pop and crossover hits."
-        },
-        {
-            "artist": "Ricky Martin",
-            "description": "Global Latin pop sensation."
-        },
-        {
-            "artist": "Carlos Santana",
-            "description": "Fusion artist blending Latin rhythms with rock guitar wizardry."
-        },
-        {
-            "artist": "Marc Anthony",
-            "description": "Salsa rom\u00e1ntica king."
-        },
-        {
-            "artist": "Celia Cruz",
-            "description": "Queen of salsa."
-        },
-        {
-            "artist": "Buena Vista Social Club",
-            "description": "Cuban son legends."
-        },
-        {
-            "artist": "Los Tigres del Norte",
-            "description": "Norte\u00f1o storytellers."
-        },
-        {
-            "artist": "Romeo Santos",
-            "description": "Bachata heartthrob."
         }
     ],
     "Gospel": [
@@ -1064,10 +621,6 @@ music_genres = {
         {
             "artist": "Tramaine Hawkins",
             "description": "Her soulful voice and uplifting messages have solidified her status as a gospel legend."
-        },
-        {
-            "artist": "Hristianskaya Muzyika",
-            "description": "Traditional Christian spiritual music."
         }
     ],
     "World": [
@@ -1080,19 +633,23 @@ music_genres = {
             "description": "Indian virtuoso who introduced global audiences to the sitar and classical traditions."
         },
         {
+            "artist": "Buena Vista Social Club",
+            "description": "Revived Cuba's rich musical heritage with timeless acoustic ensembles that resonate worldwide."
+        },
+        {
             "artist": "Youssou N'Dour",
             "description": "Senegalese icon blending traditional rhythms with modern global influences."
         },
         {
-            "artist": "Ang\u00e9lique Kidjo",
+            "artist": "Angélique Kidjo",
             "description": "Electrifying artist known for her eclectic fusion of diverse world music styles."
         },
         {
-            "artist": "Ces\u00e1ria \u00c9vora",
+            "artist": "Cesária Évora",
             "description": "Known as the 'Barefoot Diva', she brought Cape Verdean morna to the international stage."
         },
         {
-            "artist": "Ali Farka Tour\u00e9",
+            "artist": "Ali Farka Touré",
             "description": "Blended traditional Malian music with blues, forging a bridge between continents."
         },
         {
@@ -1106,14 +663,6 @@ music_genres = {
         {
             "artist": "Miriam Makeba",
             "description": "The 'Mama Africa' whose voice and activism introduced African sounds to a global audience."
-        },
-        {
-            "artist": "Narodnaya Muzyika",
-            "description": "Russian folk and traditional music."
-        },
-        {
-            "artist": "Chinese Folk",
-            "description": "Traditional melodies from Chinese culture."
         }
     ],
     "Punk": [
@@ -1124,6 +673,10 @@ music_genres = {
         {
             "artist": "Sex Pistols",
             "description": "An explosive band whose rebellious music ignited the British punk movement."
+        },
+        {
+            "artist": "The Clash",
+            "description": "Blended punk with reggae, rockabilly, and dub, fearlessly tackling social issues."
         },
         {
             "artist": "Bad Religion",
@@ -1152,49 +705,13 @@ music_genres = {
         {
             "artist": "Minor Threat",
             "description": "A seminal hardcore punk band that helped define the straight-edge movement."
-        },
-        {
-            "artist": "The Offspring",
-            "description": "Melodic punk rock with rebellious energy."
-        },
-        {
-            "artist": "NOFX",
-            "description": "Fast-paced punk with satirical lyrics."
-        },
-        {
-            "artist": "Rancid",
-            "description": "Punk fused with ska and streetwise themes."
-        },
-        {
-            "artist": "Ramones",
-            "description": "Pioneers of punk rock known for their raw, high-energy sound."
-        },
-        {
-            "artist": "Blink-182",
-            "description": "Pop-punk icons blending humor and fast-paced melodies."
-        },
-        {
-            "artist": "The Damned",
-            "description": "First UK punk single."
-        },
-        {
-            "artist": "Bad Brains",
-            "description": "Hardcore punk meets reggae."
-        },
-        {
-            "artist": "Dead Kennedys",
-            "description": "Satirical punk provocateurs."
-        },
-        {
-            "artist": "The Misfits",
-            "description": "Horror-punk with B-movie flair."
-        },
-        {
-            "artist": "X-Ray Spex",
-            "description": "Feminist punk energy."
         }
     ],
     "Alternative/Indie": [
+        {
+            "artist": "Radiohead",
+            "description": "Known for experimental soundscapes and a constantly evolving musical style."
+        },
         {
             "artist": "Arctic Monkeys",
             "description": "Evolved from raw garage rock beginnings to a refined and sophisticated indie sound."
@@ -1230,50 +747,6 @@ music_genres = {
         {
             "artist": "Tame Impala",
             "description": "Experiments with psychedelic sounds and innovative production, redefining modern indie rock."
-        },
-        {
-            "artist": "Arcade Fire",
-            "description": "Indie rock band with orchestral arrangements."
-        },
-        {
-            "artist": "Coldplay",
-            "description": "Alternative rock band known for their emotional and uplifting songs."
-        },
-        {
-            "artist": "Muse",
-            "description": "Blended rock, electronic, and classical influences into their unique sound."
-        },
-        {
-            "artist": "Pixies",
-            "description": "Indie rock pioneers blending surreal lyrics with raw, dynamic soundscapes."
-        },
-        {
-            "artist": "The Strokes",
-            "description": "2000s garage-rock revivalists."
-        },
-        {
-            "artist": "LCD Soundsystem",
-            "description": "Dance-punk intellectuals."
-        },
-        {
-            "artist": "The National",
-            "description": "Moody baritone indie."
-        },
-        {
-            "artist": "Interpol",
-            "description": "Post-punk revivalists."
-        },
-        {
-            "artist": "Beach House",
-            "description": "Dream-pop etherealism."
-        },
-        {
-            "artist": "Sufjan Stevens",
-            "description": "Orchestral indie folk."
-        },
-        {
-            "artist": "Phoenix",
-            "description": "French indie-pop sophisticates."
         }
     ],
     "New Age": [
@@ -1316,13 +789,13 @@ music_genres = {
         {
             "artist": "Secret Garden",
             "description": "Known for ornate, minimalist compositions that evoke peaceful and introspective moods."
-        },
-        {
-            "artist": "Jean Michel Jarre",
-            "description": "Electronic pioneer creating atmospheric soundscapes."
         }
     ],
     "Funk": [
+        {
+            "artist": "James Brown",
+            "description": "The 'Godfather of Funk,' acclaimed for dynamic performances and infectious grooves."
+        },
         {
             "artist": "Parliament-Funkadelic",
             "description": "Led by George Clinton, they fused funk with psychedelic flair to revolutionize the genre."
@@ -1330,6 +803,10 @@ music_genres = {
         {
             "artist": "Sly & the Family Stone",
             "description": "Brought a vibrant mix of funk, soul, and rock that reshaped the musical landscape."
+        },
+        {
+            "artist": "Earth, Wind & Fire",
+            "description": "Iconic for polished performances and a masterful fusion of funk, soul, and R&B."
         },
         {
             "artist": "Rick James",
@@ -1357,6 +834,10 @@ music_genres = {
         }
     ],
     "Soundtrack/Film Score": [
+        {
+            "artist": "Hans Zimmer",
+            "description": "Crafts evocative film scores that have redefined modern cinematic soundscapes."
+        },
         {
             "artist": "John Williams",
             "description": "Renowned for timeless themes and iconic scores that shape our cinematic memories."
@@ -1392,353 +873,10 @@ music_genres = {
         {
             "artist": "Carter Burwell",
             "description": "Known for subtle, evocative scoring that enhances the emotional landscape of films."
-        },
-        {
-            "artist": "Movie Themes",
-            "description": "Iconic orchestral compositions for cinema."
-        },
-        {
-            "artist": "Video Games",
-            "description": "Memorable scores from gaming soundtracks."
-        }
-    ],
-    "K-Pop": [
-        {
-            "artist": "BTS",
-            "description": "Global superstars blending pop, hip-hop, and EDM with Korean influences."
-        },
-        {
-            "artist": "BLACKPINK",
-            "description": "High-energy girl group with fierce performances and catchy hooks."
-        },
-        {
-            "artist": "TWICE",
-            "description": "Bubblegum pop meets infectious dance tracks."
-        },
-        {
-            "artist": "EXO",
-            "description": "SM Entertainment's vocal-dance kings."
-        },
-        {
-            "artist": "IU",
-            "description": "Soloist with angelic vocals."
-        }
-    ],
-    "Afrobeats": [
-        {
-            "artist": "Burna Boy",
-            "description": "Nigerian artist fusing Afrobeat, dancehall, and reggae."
-        },
-        {
-            "artist": "Wizkid",
-            "description": "Pioneer of modern Afrobeats with global crossover appeal."
-        },
-        {
-            "artist": "Tems",
-            "description": "Soulful vocals blending R&B and Afrobeat rhythms."
-        },
-        {
-            "artist": "Davido",
-            "description": "Afrobeats hit machine."
-        }
-    ],
-    "Disco": [
-        {
-            "artist": "Bee Gees",
-            "description": "Kings of disco with falsetto harmonies and Saturday Night Fever anthems."
-        },
-        {
-            "artist": "ABBA",
-            "description": "Swedish pop-disco legends with timeless melodies."
-        },
-        {
-            "artist": "Donna Summer",
-            "description": "Queen of disco with electrifying dancefloor hits."
-        }
-    ],
-    "Grunge": [
-        {
-            "artist": "Soundgarden",
-            "description": "Heavy, psychedelic-tinged grunge pioneers."
-        },
-        {
-            "artist": "Alice in Chains",
-            "description": "Dark, harmonized grunge-metal."
-        },
-        {
-            "artist": "Stone Temple Pilots",
-            "description": "90s alt-rock radio staples."
-        }
-    ],
-    "Ska": [
-        {
-            "artist": "The Specials",
-            "description": "British ska revivalists with social commentary."
-        },
-        {
-            "artist": "Madness",
-            "description": "Upbeat ska-pop with a quirky British charm."
-        },
-        {
-            "artist": "Reel Big Fish",
-            "description": "Third-wave ska with humor and brass sections."
-        }
-    ],
-    "Industrial": [
-        {
-            "artist": "Nine Inch Nails",
-            "description": "Fusion of metal, electronic, and abrasive textures."
-        },
-        {
-            "artist": "Marilyn Manson",
-            "description": "Shock rock meets industrial theatrics."
-        },
-        {
-            "artist": "Rammstein",
-            "description": "German industrial metal with pyrotechnic spectacle."
-        },
-        {
-            "artist": "Ministry",
-            "description": "Pioneers of industrial metal."
-        },
-        {
-            "artist": "Skinny Puppy",
-            "description": "Canadian industrial innovators."
-        },
-        {
-            "artist": "KMFDM",
-            "description": "German industrial dance-rock."
-        },
-        {
-            "artist": "Front 242",
-            "description": "Belgian EBM originators."
-        }
-    ],
-    "Bluegrass": [
-        {
-            "artist": "Bill Monroe",
-            "description": "Father of bluegrass and mandolin virtuoso."
-        },
-        {
-            "artist": "Alison Krauss",
-            "description": "Angel-voiced fiddler bridging bluegrass and folk."
-        },
-        {
-            "artist": "B\u00e9la Fleck",
-            "description": "Banjo innovator pushing bluegrass boundaries."
-        },
-        {
-            "artist": "Earl Scruggs",
-            "description": "Banjo pioneer."
-        },
-        {
-            "artist": "The Stanley Brothers",
-            "description": "Mountain harmonies."
-        }
-    ],
-    "Soul": [
-        {
-            "artist": "Adele",
-            "description": "Modern soul powerhouse with heart-wrenching ballads."
-        }
-    ],
-    "Progressive Rock": [
-        {
-            "artist": "Yes",
-            "description": "Complex compositions and virtuosic musicianship."
-        },
-        {
-            "artist": "King Crimson",
-            "description": "Avant-garde prog-rock with dissonant brilliance."
-        },
-        {
-            "artist": "Rush",
-            "description": "Canadian power trio with sci-fi lyrics."
-        },
-        {
-            "artist": "Emerson, Lake & Palmer",
-            "description": "Classical-meets-rock virtuosity."
-        }
-    ],
-    "Experimental": [
-        {
-            "artist": "Bj\u00f6rk",
-            "description": "Icelandic avant-pop artist defying genre conventions."
-        }
-    ],
-    "House": [
-        {
-            "artist": "Frankie Knuckles",
-            "description": "Godfather of house music and Chicago club culture."
-        },
-        {
-            "artist": "Disclosure",
-            "description": "Modern house-pop with UK garage influences."
-        }
-    ],
-    "Trap": [
-        {
-            "artist": "Travis Scott",
-            "description": "Psychedelic trap with cinematic production."
-        },
-        {
-            "artist": "Migos",
-            "description": "Pioneered triplet flows and modern trap aesthetics."
-        },
-        {
-            "artist": "Future",
-            "description": "Auto-tuned melancholic trap anthems."
-        }
-    ],
-    "Ambient": [
-        {
-            "artist": "Brian Eno",
-            "description": "Father of ambient music and atmospheric soundscapes."
-        },
-        {
-            "artist": "Sigur R\u00f3s",
-            "description": "Ethereal post-rock with Icelandic falsetto."
-        },
-        {
-            "artist": "Stars of the Lid",
-            "description": "Drone-heavy ambient for deep meditation."
         }
     ]
 }
 
-#===============================================================================================================
-
-NestedIn = Dict[str, Dict[str, Dict[str, List[str]]]]
-
-def transpose_top_key(
-    data: NestedIn,
-    *,
-    top_key: str = "artist",
-    dedupe_hashes: bool = True
-    ) -> Dict[str, Any]:
-    
-    """
-    Transpose a nested dict that is always structured as:
-      Genre -> Artist -> Song -> list[md5]
-
-    Supported top_key values (case-insensitive):
-      - "genre"  -> returns a deep copy of the input (Genre -> Artist -> Song -> list[md5])
-      - "artist" -> Artist -> Genre -> Song -> list[md5]
-      - "song"   -> Song -> Genre -> Artist -> list[md5]
-      - "md5"    -> md5 -> Genre -> Artist -> list[Song]
-
-    Parameters
-    - data: input nested dictionary (Genre -> Artist -> Song -> list[md5])
-    - top_key: desired top-level key
-    - dedupe_hashes: when True:
-        * for artist/song/genre outputs: deduplicate md5 lists preserving first-seen order
-        * for md5 output: deduplicate song lists preserving first-seen order
-
-    Returns
-    - new nested dictionary with the requested top-level key
-    """
-    
-    if data is None:
-        return {}
-
-    key = (top_key or "artist").strip().lower()
-    if key not in {"artist", "song", "genre", "md5"}:
-        raise ValueError("top_key must be one of: 'artist', 'song', 'genre', 'md5'")
-
-    def ensure_list(x: Any) -> List[str]:
-        if x is None:
-            return []
-        if isinstance(x, list):
-            return list(x)
-        if isinstance(x, (str, bytes)):
-            return [x]
-        try:
-            return list(x)
-        except Exception:
-            return [x]
-
-    def dedupe_preserve_order(seq: List[str]) -> List[str]:
-        seen = set()
-        out = []
-        for item in seq:
-            if item not in seen:
-                seen.add(item)
-                out.append(item)
-        return out
-
-    # If user wants genre as top key, return a deep copy of the input
-    if key == "genre":
-        return copy.deepcopy(data)
-
-    # Build result using nested defaultdicts for convenience
-    if key in {"artist", "song"}:
-        result = defaultdict(lambda: defaultdict(dict))
-        for genre, artists in data.items():
-            if not isinstance(artists, dict):
-                continue
-            for artist, songs in artists.items():
-                if not isinstance(songs, dict):
-                    continue
-                for song, hashes in songs.items():
-                    hashes_list = ensure_list(hashes)
-                    hashes_list = copy.deepcopy(hashes_list)
-                    if dedupe_hashes:
-                        hashes_list = dedupe_preserve_order(hashes_list)
-
-                    if key == "artist":
-                        top = artist
-                        second = genre
-                        third = song
-                    else:  # key == "song"
-                        top = song
-                        second = genre
-                        third = artist
-
-                    if second not in result[top]:
-                        result[top][second] = {}
-
-                    existing = result[top][second].get(third)
-                    if existing is None:
-                        result[top][second][third] = hashes_list
-                    else:
-                        combined = existing + hashes_list
-                        if dedupe_hashes:
-                            combined = dedupe_preserve_order(combined)
-                        result[top][second][third] = combined
-
-        return {
-            top_val: {second_val: dict(third_map) for second_val, third_map in seconds.items()}
-            for top_val, seconds in result.items()
-        }
-
-    # key == "md5": produce md5 -> Genre -> Artist -> list[Song]
-    md5_index = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    for genre, artists in data.items():
-        if not isinstance(artists, dict):
-            continue
-        for artist, songs in artists.items():
-            if not isinstance(songs, dict):
-                continue
-            for song, hashes in songs.items():
-                hashes_list = ensure_list(hashes)
-                for h in hashes_list:
-                    # append song under md5 -> genre -> artist
-                    md5_index[h][genre][artist].append(song)
-
-    # Optionally dedupe song lists while preserving order
-    if dedupe_hashes:
-        for h, genres in md5_index.items():
-            for genre, artists in genres.items():
-                for artist, song_list in artists.items():
-                    md5_index[h][genre][artist] = dedupe_preserve_order(song_list)
-
-    # Convert nested defaultdicts to normal dicts
-    return {
-        h: {genre: {artist: list(songs) for artist, songs in artists.items()}
-            for genre, artists in genres.items()}
-        for h, genres in md5_index.items()
-    }
-
 ################################################################################
-# This is the end of Genres Python module
+# This is the end of Genres Artists Python module
 ################################################################################
