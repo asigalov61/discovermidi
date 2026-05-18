@@ -16,7 +16,7 @@ r'''############################################################################
 #
 ################################################################################
 #
-#       Copyright 2025 Project Los Angeles / Tegridy Code
+#       Copyright 2026 Project Los Angeles / Tegridy Code
 #
 #       Licensed under the Apache License, Version 2.0 (the "License");
 #       you may not use this file except in compliance with the License.
